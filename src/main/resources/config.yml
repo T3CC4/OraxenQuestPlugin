@@ -1,0 +1,275 @@
+# OraxenQuestPlugin Configuration
+# Alle Oraxen Item-IDs müssen existieren!
+
+# Quest NPC Einstellungen
+quest-npc:
+  type: VILLAGER  # Entity-Typ (VILLAGER, ZOMBIE, etc.)
+  name: "&6Quest Händler"  # Name des NPCs
+
+# Cooldown Einstellungen werden im Code verwaltet:
+# - Globaler Cooldown: 30 Minuten (wenn anderer Spieler Quest macht)
+# - Spieler-Cooldown: 1 Stunde (wenn derselbe Spieler Quest nochmal macht)
+# - Auto-Cycling: 5 Stunden (wenn niemand Quest macht)
+
+# Quest Definitionen
+quests:
+  quest1:
+    required-item: "emerald_shard"  # Oraxen Item ID das benötigt wird
+    reward-item: "ruby"  # Oraxen Item ID als Belohnung
+    money-reward: 100.0  # Geld Belohnung (benötigt Vault)
+
+  quest2:
+    required-item: "copper_ingot"
+    reward-item: "steel_ingot"
+    money-reward: 50.0
+
+  quest3:
+    required-item: "mythril_ore"
+    reward-item: "mythril_bar"
+    money-reward: 250.0
+
+# Mob Drops
+# Format: mob-typ -> drop-id -> oraxen-item, chance (in %), min-amount, max-amount
+# LOOTING-VERZAUBERUNG: Jedes Looting-Level erhöht die Drop-Chance um +1%
+#   Beispiel: 15% base Chance + Looting III (3) = 18% Chance
+#   Maximale Chance ist immer 100%
+mob-drops:
+  ZOMBIE:
+    drop1:
+      oraxen-item: "rotten_apple"
+      chance: 15.0  # 15% Chance
+      min-amount: 1
+      max-amount: 3
+    drop2:
+      oraxen-item: "cursed_bone"
+      chance: 5.0  # 5% Chance
+      min-amount: 1
+      max-amount: 1
+
+  SKELETON:
+    drop1:
+      oraxen-item: "enchanted_bone"
+      chance: 10.0
+      min-amount: 1
+      max-amount: 2
+
+  CREEPER:
+    drop1:
+      oraxen-item: "explosive_powder"
+      chance: 20.0
+      min-amount: 1
+      max-amount: 4
+
+  ENDER_DRAGON:
+    drop1:
+      oraxen-item: "dragon_scale"
+      chance: 100.0
+      min-amount: 5
+      max-amount: 10
+    drop2:
+      oraxen-item: "dragon_heart"
+      chance: 50.0
+      min-amount: 1
+      max-amount: 1
+
+# Block Drops
+# Format: block-typ -> drop-id -> oraxen-item, chance (in %), min-amount, max-amount
+block-drops:
+  STONE:
+    drop1:
+      oraxen-item: "smooth_pebble"
+      chance: 2.0  # 2% Chance
+      min-amount: 1
+      max-amount: 1
+
+  DIAMOND_ORE:
+    drop1:
+      oraxen-item: "diamond_shard"
+      chance: 25.0
+      min-amount: 1
+      max-amount: 3
+
+  DEEPSLATE_DIAMOND_ORE:
+    drop1:
+      oraxen-item: "diamond_shard"
+      chance: 30.0
+      min-amount: 2
+      max-amount: 4
+
+  ANCIENT_DEBRIS:
+    drop1:
+      oraxen-item: "netherite_fragment"
+      chance: 15.0
+      min-amount: 1
+      max-amount: 2
+
+  OAK_LOG:
+    drop1:
+      oraxen-item: "resin"
+      chance: 5.0
+      min-amount: 1
+      max-amount: 1
+
+# Chest Loot (LootTable-basiert)
+# Format: loottable-key -> loot-id -> oraxen-item, chance (in %), min-amount, max-amount
+#
+# WICHTIG: Du kannst die Enum-Namen aus StructureType.java verwenden!
+# Vorteile:
+#   - Auto-Complete in deiner IDE
+#   - Typsicher
+#   - Übersicht über alle verfügbaren Strukturen
+#
+# Der Key kann entweder der komplette LootTable-Key sein oder ein Teil davon.
+#
+# ALLE VERFÜGBAREN STRUKTUREN (siehe StructureType.java):
+#
+# === OVERWORLD ===
+# Unterwasser: BURIED_TREASURE, SHIPWRECK_MAP, SHIPWRECK_SUPPLY, SHIPWRECK_TREASURE,
+#              OCEAN_RUIN_COLD, OCEAN_RUIN_WARM
+# Wüste: DESERT_PYRAMID
+# Dschungel: JUNGLE_TEMPLE, JUNGLE_TEMPLE_DISPENSER
+# Dörfer: VILLAGE_WEAPONSMITH, VILLAGE_TOOLSMITH, VILLAGE_ARMORER, VILLAGE_CARTOGRAPHER,
+#         VILLAGE_MASON, VILLAGE_SHEPHERD, VILLAGE_BUTCHER, VILLAGE_FLETCHER,
+#         VILLAGE_FISHER, VILLAGE_TANNERY, VILLAGE_TEMPLE, VILLAGE_DESERT_HOUSE,
+#         VILLAGE_PLAINS_HOUSE, VILLAGE_TAIGA_HOUSE, VILLAGE_SNOWY_HOUSE, VILLAGE_SAVANNA_HOUSE
+# Andere: MINESHAFT, STRONGHOLD_CORRIDOR, STRONGHOLD_CROSSING, STRONGHOLD_LIBRARY,
+#         WOODLAND_MANSION, PILLAGER_OUTPOST, IGLOO, RUINED_PORTAL,
+#         ANCIENT_CITY, ANCIENT_CITY_ICE_BOX, TRAIL_RUINS_COMMON, TRAIL_RUINS_RARE
+#
+# === NETHER ===
+# NETHER_BRIDGE, BASTION_TREASURE, BASTION_OTHER, BASTION_BRIDGE, BASTION_HOGLIN_STABLE
+#
+# === END ===
+# END_CITY_TREASURE
+#
+# Beispiele:
+# - "village" → matched alle Village-Kisten
+# - "shipwreck_treasure" → matched nur Schiffswrack-Schatzkisten
+# - "ancient_city" → matched Ancient City Kisten
+# - "bastion_treasure" → matched Bastion Treasure Room
+#
+chest-loot:
+  # Dörfer (alle Village-Kisten)
+  village:
+    loot1:
+      oraxen-item: "village_token"
+      chance: 30.0
+      min-amount: 1
+      max-amount: 3
+
+  # Wüstentempel
+  desert_pyramid:
+    loot1:
+      oraxen-item: "ancient_coin"
+      chance: 40.0
+      min-amount: 1
+      max-amount: 5
+    loot2:
+      oraxen-item: "mysterious_key"
+      chance: 15.0
+      min-amount: 1
+      max-amount: 1
+
+  # Dschungeltempel
+  jungle_temple:
+    loot1:
+      oraxen-item: "jungle_relic"
+      chance: 35.0
+      min-amount: 1
+      max-amount: 2
+
+  # Festungen
+  stronghold:
+    loot1:
+      oraxen-item: "enchanted_book_rare"
+      chance: 25.0
+      min-amount: 1
+      max-amount: 1
+    loot2:
+      oraxen-item: "stronghold_artifact"
+      chance: 10.0
+      min-amount: 1
+      max-amount: 1
+
+  # End-Cities
+  end_city_treasure:
+    loot1:
+      oraxen-item: "end_crystal_shard"
+      chance: 50.0
+      min-amount: 2
+      max-amount: 5
+
+  # Bastionen
+  bastion_treasure:
+    loot1:
+      oraxen-item: "piglin_gold"
+      chance: 40.0
+      min-amount: 3
+      max-amount: 8
+
+  # Vergrabene Schätze
+  buried_treasure:
+    loot1:
+      oraxen-item: "treasure_map_fragment"
+      chance: 60.0
+      min-amount: 1
+      max-amount: 1
+    loot2:
+      oraxen-item: "ocean_pearl"
+      chance: 30.0
+      min-amount: 1
+      max-amount: 3
+
+  # Schiffswracks (nur Schatzkiste)
+  shipwreck_treasure:
+    loot1:
+      oraxen-item: "water_logged_compass"
+      chance: 45.0
+      min-amount: 1
+      max-amount: 1
+
+  # Antike Stadt (Ancient City)
+  ancient_city:
+    loot1:
+      oraxen-item: "echo_crystal"
+      chance: 35.0
+      min-amount: 1
+      max-amount: 2
+    loot2:
+      oraxen-item: "warden_horn"
+      chance: 8.0
+      min-amount: 1
+      max-amount: 1
+
+  # Waldanwesen (Woodland Mansion)
+  woodland_mansion:
+    loot1:
+      oraxen-item: "mansion_key"
+      chance: 25.0
+      min-amount: 1
+      max-amount: 1
+      max-amount: 3
+
+  # Schiffswracks (Treasure)
+  shipwreck_treasure:
+    loot1:
+      oraxen-item: "ancient_compass"
+      chance: 25.0
+      min-amount: 1
+      max-amount: 1
+
+  # Minen
+  abandoned_mineshaft:
+    loot1:
+      oraxen-item: "rusty_gear"
+      chance: 20.0
+      min-amount: 1
+      max-amount: 2
+
+  # Nether-Festungen
+  nether_bridge:
+    loot1:
+      oraxen-item: "nether_soul"
+      chance: 15.0
+      min-amount: 1
+      max-amount: 1

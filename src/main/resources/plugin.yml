@@ -1,0 +1,24 @@
+name: OraxenQuestPlugin
+version: 1.0
+main: de.questplugin.OraxenQuestPlugin
+api-version: 1.21
+author: YourName
+depend: [Oraxen, AdvancedEnchantments]
+softdepend: [Vault]
+
+commands:
+  quest:
+    description: Quest Verwaltung
+    usage: /quest <info|reload|spawnnpc>
+    permission: quest.use
+
+permissions:
+  quest.use:
+    description: Erlaubt die Nutzung des /quest Befehls
+    default: op
+  quest.reload:
+    description: Erlaubt das Neuladen der Config
+    default: op
+  quest.spawnnpc:
+    description: Erlaubt das Spawnen des Quest-NPCs
+    default: op
