@@ -8,98 +8,129 @@ import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.entity.Player;
-import org.bukkit.inventory.ItemStack;
 import org.bukkit.scheduler.BukkitTask;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class QuestManager {
 
     private final OraxenQuestPlugin plugin;
-    private Quest currentQuest;
-    private long questStartTime;
-    private long nextQuestAvailable;
-    private UUID lastCompletedPlayer;
-    private BukkitTask questTask;
     private final Random random;
     private Economy economy;
-    private final Set<UUID> trackedPlayers;
+
+    // Thread-safe Collections
+    private final Set<UUID> trackedPlayers = ConcurrentHashMap.newKeySet();
+    private final Set<UUID> completedPlayers = ConcurrentHashMap.newKeySet();
+
+    // Thread-safe Quest State mit ReadWriteLock
+    private final ReadWriteLock questLock = new ReentrantReadWriteLock();
+    private volatile Quest currentQuest;
+    private volatile long questStartTime;
+    private volatile long nextQuestAvailable;
+    private volatile UUID lastCompletedPlayer;
+
+    private BukkitTask questTask;
+
+    // Cache für validierte Quests
+    private final Map<String, Quest> validQuestCache = new ConcurrentHashMap<>();
 
     public QuestManager(OraxenQuestPlugin plugin) {
         this.plugin = plugin;
         this.random = new Random();
-        this.trackedPlayers = new HashSet<>();
+
         setupEconomy();
         loadFromData();
+        validateQuestCache();
     }
 
     private void setupEconomy() {
         if (plugin.getServer().getPluginManager().getPlugin("Vault") == null) {
-            plugin.getLogger().warning("Vault nicht gefunden!");
+            plugin.getLogger().warning("Vault nicht gefunden - Geld-Belohnungen deaktiviert");
             return;
         }
 
         try {
             var rsp = plugin.getServer().getServicesManager().getRegistration(Economy.class);
-            if (rsp == null) {
-                plugin.getLogger().warning("Keine Economy-Provider gefunden!");
-                return;
-            }
-            economy = rsp.getProvider();
-            if (economy != null) {
-                plugin.getLogger().info("Vault Economy erfolgreich geladen: " + economy.getName());
+            if (rsp != null) {
+                economy = rsp.getProvider();
+                plugin.getPluginLogger().info("Economy geladen: " + economy.getName());
+            } else {
+                plugin.getLogger().warning("Kein Economy-Provider gefunden");
             }
         } catch (Exception e) {
-            plugin.getLogger().severe("Fehler beim Laden von Vault: " + e.getMessage());
-            e.printStackTrace();
+            plugin.getPluginLogger().severe("Fehler beim Laden von Vault: " + e.getMessage());
         }
+    }
+
+    private void validateQuestCache() {
+        ConfigurationSection questsSection = plugin.getConfig().getConfigurationSection("quests");
+        if (questsSection == null) return;
+
+        int valid = 0;
+        int invalid = 0;
+
+        for (String questKey : questsSection.getKeys(false)) {
+            ConfigurationSection questData = questsSection.getConfigurationSection(questKey);
+            if (questData == null) continue;
+
+            String requiredItem = questData.getString("required-item");
+            String rewardItem = questData.getString("reward-item");
+            double money = questData.getDouble("money-reward", 0);
+
+            if (validateOraxenItems(requiredItem, rewardItem)) {
+                validQuestCache.put(questKey, new Quest(requiredItem, rewardItem, money));
+                valid++;
+            } else {
+                invalid++;
+                plugin.getLogger().warning("Quest '" + questKey + "' ungültig: Items nicht in Oraxen");
+            }
+        }
+
+        plugin.getPluginLogger().info("Quest-Cache: " + valid + " gültig, " + invalid + " ungültig");
     }
 
     private void loadFromData() {
-        // Lade Quest-Daten
-        String requiredItem = plugin.getDataManager().getQuestRequiredItem();
-        String rewardItem = plugin.getDataManager().getQuestRewardItem();
-        double moneyReward = plugin.getDataManager().getQuestMoneyReward();
+        try {
+            questLock.writeLock().lock();
 
-        if (requiredItem != null && rewardItem != null) {
-            // Validiere ob Items existieren
-            if (validateOraxenItems(requiredItem, rewardItem)) {
+            String requiredItem = plugin.getDataManager().getQuestRequiredItem();
+            String rewardItem = plugin.getDataManager().getQuestRewardItem();
+            double moneyReward = plugin.getDataManager().getQuestMoneyReward();
+
+            if (requiredItem != null && rewardItem != null &&
+                    validateOraxenItems(requiredItem, rewardItem)) {
                 currentQuest = new Quest(requiredItem, rewardItem, moneyReward);
-                //plugin.getLogger().info("Quest aus Daten geladen: " + requiredItem + " -> " + rewardItem);
             } else {
-                //plugin.getLogger().warning("Gespeicherte Quest ungültig, wähle neue Quest");
                 selectRandomQuest();
             }
-        } else {
-            selectRandomQuest();
-        }
 
-        questStartTime = plugin.getDataManager().getQuestStartTime();
-        nextQuestAvailable = plugin.getDataManager().getNextQuestAvailable();
+            questStartTime = plugin.getDataManager().getQuestStartTime();
+            nextQuestAvailable = plugin.getDataManager().getNextQuestAvailable();
 
-        // Lade letzten Spieler
-        String lastPlayerUUID = plugin.getDataManager().getLastCompletedPlayerUUID();
-        if (lastPlayerUUID != null && !lastPlayerUUID.isEmpty()) {
-            try {
-                lastCompletedPlayer = UUID.fromString(lastPlayerUUID);
-            } catch (IllegalArgumentException e) {
-                //plugin.getLogger().warning("Ungültige UUID für letzten Spieler: " + lastPlayerUUID);
+            String lastPlayerUUID = plugin.getDataManager().getLastCompletedPlayerUUID();
+            if (lastPlayerUUID != null && !lastPlayerUUID.isEmpty()) {
+                try {
+                    lastCompletedPlayer = UUID.fromString(lastPlayerUUID);
+                } catch (IllegalArgumentException e) {
+                    plugin.getLogger().warning("Ungültige UUID: " + lastPlayerUUID);
+                }
             }
+        } finally {
+            questLock.writeLock().unlock();
         }
 
-        // Lade Tracked Players
         trackedPlayers.addAll(plugin.getDataManager().loadTrackedPlayers());
-        plugin.getLogger().info(trackedPlayers.size() + " getrackte Spieler geladen");
+        plugin.getPluginLogger().info(trackedPlayers.size() + " Spieler werden getrackt");
     }
 
     private boolean validateOraxenItems(String... itemIds) {
+        if (itemIds == null) return false;
+
         for (String itemId : itemIds) {
-            if (itemId == null || itemId.isEmpty()) {
-                return false;
-            }
-            // Nutze die offizielle Oraxen API Methode
-            if (!OraxenItems.exists(itemId)) {
-                plugin.getLogger().warning("Oraxen Item nicht gefunden: " + itemId);
+            if (itemId == null || itemId.isEmpty() || !OraxenItems.exists(itemId)) {
                 return false;
             }
         }
@@ -107,241 +138,244 @@ public class QuestManager {
     }
 
     private void saveToData() {
-        if (currentQuest != null) {
-            plugin.getDataManager().saveQuestData(
-                    currentQuest.requiredItem,
-                    currentQuest.rewardItem,
-                    currentQuest.moneyReward,
-                    questStartTime,
-                    nextQuestAvailable,
-                    lastCompletedPlayer != null ? lastCompletedPlayer.toString() : null
-            );
+        try {
+            questLock.readLock().lock();
+
+            if (currentQuest != null) {
+                plugin.getDataManager().saveQuestData(
+                        currentQuest.requiredItem,
+                        currentQuest.rewardItem,
+                        currentQuest.moneyReward,
+                        questStartTime,
+                        nextQuestAvailable,
+                        lastCompletedPlayer != null ? lastCompletedPlayer.toString() : null
+                );
+            }
+
+            plugin.getDataManager().saveTrackedPlayers(trackedPlayers);
+        } finally {
+            questLock.readLock().unlock();
         }
-        plugin.getDataManager().saveTrackedPlayers(trackedPlayers);
     }
 
     private void selectRandomQuest() {
-        ConfigurationSection questsSection = plugin.getConfig().getConfigurationSection("quests");
-        if (questsSection == null) {
-            plugin.getLogger().warning("Keine Quests in der Config gefunden!");
+        if (validQuestCache.isEmpty()) {
+            plugin.getPluginLogger().severe("Keine gültigen Quests verfügbar!");
             currentQuest = null;
             return;
         }
 
-        List<String> questKeys = new ArrayList<>(questsSection.getKeys(false));
-        if (questKeys.isEmpty()) {
-            plugin.getLogger().warning("Keine Quests konfiguriert!");
-            currentQuest = null;
-            return;
-        }
+        // Wähle zufällige Quest aus Cache
+        List<Quest> quests = new ArrayList<>(validQuestCache.values());
+        currentQuest = quests.get(random.nextInt(quests.size()));
+        questStartTime = System.currentTimeMillis();
 
-        // Mische Quest-Keys für zufällige Auswahl
-        Collections.shuffle(questKeys);
+        plugin.getPluginLogger().info("Neue Quest: " + currentQuest.requiredItem +
+                " → " + currentQuest.rewardItem);
 
-        // Versuche gültige Quest zu finden
-        for (String questKey : questKeys) {
-            ConfigurationSection questData = questsSection.getConfigurationSection(questKey);
-
-            if (questData != null) {
-                String requiredItem = questData.getString("required-item");
-                String rewardItem = questData.getString("reward-item");
-                double money = questData.getDouble("money-reward", 0);
-
-                // Validiere Items
-                if (validateOraxenItems(requiredItem, rewardItem)) {
-                    currentQuest = new Quest(requiredItem, rewardItem, money);
-                    questStartTime = System.currentTimeMillis();
-
-                    plugin.getLogger().info("Neue Quest ausgewählt: " + requiredItem + " -> " + rewardItem);
-
-                    // Speichere neue Quest
-                    saveToData();
-
-                    // Announce neue Quest an alle getrackte Spieler
-                    announceNewQuest();
-                    return;
-                } else {
-                    plugin.getLogger().warning("Quest '" + questKey + "' übersprungen - ungültige Oraxen Items");
-                }
-            }
-        }
-
-        // Keine gültige Quest gefunden
-        plugin.getLogger().severe("Keine gültige Quest gefunden! Alle Oraxen Items fehlen!");
-        currentQuest = null;
+        saveToData();
+        announceNewQuest();
     }
 
     private void announceNewQuest() {
-        if (currentQuest == null) return;
+        try {
+            questLock.readLock().lock();
 
-        String message = ChatColor.GOLD + "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n" +
-                ChatColor.YELLOW + "⚡ " + ChatColor.GOLD + ChatColor.BOLD + "NEUE QUEST VERFÜGBAR" + ChatColor.YELLOW + " ⚡\n" +
-                ChatColor.GRAY + "Benötigt: " + ChatColor.WHITE + currentQuest.requiredItem + "\n" +
-                ChatColor.GRAY + "Belohnung: " + ChatColor.GREEN + currentQuest.rewardItem;
+            if (currentQuest == null) return;
 
-        if (currentQuest.moneyReward > 0) {
-            message += "\n" + ChatColor.GRAY + "Geld: " + ChatColor.GOLD + currentQuest.moneyReward + "$";
-        }
+            String message = ChatColor.GOLD + "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n" +
+                    ChatColor.YELLOW + "⚡ " + ChatColor.GOLD + ChatColor.BOLD +
+                    "NEUE QUEST VERFÜGBAR" + ChatColor.YELLOW + " ⚡\n" +
+                    ChatColor.GRAY + "Benötigt: " + ChatColor.WHITE + currentQuest.requiredItem + "\n" +
+                    ChatColor.GRAY + "Belohnung: " + ChatColor.GREEN + currentQuest.rewardItem;
 
-        message += "\n" + ChatColor.GOLD + "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━";
-
-        for (UUID uuid : trackedPlayers) {
-            Player player = Bukkit.getPlayer(uuid);
-            if (player != null && player.isOnline()) {
-                player.sendMessage(message);
+            if (currentQuest.moneyReward > 0) {
+                message += "\n" + ChatColor.GRAY + "Geld: " + ChatColor.GOLD +
+                        String.format("%.2f", currentQuest.moneyReward) + "$";
             }
+
+            message += "\n" + ChatColor.GOLD + "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━";
+
+            final String finalMessage = message;
+
+            // Async Broadcast für Performance
+            Bukkit.getScheduler().runTask(plugin, () -> {
+                for (UUID uuid : trackedPlayers) {
+                    Player player = Bukkit.getPlayer(uuid);
+                    if (player != null && player.isOnline()) {
+                        player.sendMessage(finalMessage);
+                    }
+                }
+            });
+        } finally {
+            questLock.readLock().unlock();
         }
     }
 
     public void addTrackedPlayer(UUID uuid) {
         if (trackedPlayers.add(uuid)) {
-            // Speichere nur wenn neu hinzugefügt
-            saveToData();
+            // Async Save für Performance
+            Bukkit.getScheduler().runTaskAsynchronously(plugin, this::saveToData);
         }
     }
 
     public void startQuestTimer() {
         questTask = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
-            long now = System.currentTimeMillis();
+            try {
+                questLock.readLock().lock();
 
-            // Prüfe ob Quest verfügbar ist
-            if (now >= nextQuestAvailable) {
-                // Quest nach 5 Stunden automatisch wechseln wenn niemand sie gemacht hat
-                long timeSinceStart = now - questStartTime;
-                long fiveHours = 5 * 60 * 60 * 1000;
+                long now = System.currentTimeMillis();
 
-                if (timeSinceStart >= fiveHours) {
-                    plugin.getLogger().info("Quest-Timeout nach 5 Stunden - Neue Quest wird ausgewählt");
-                    selectRandomQuest();
+                // Auto-Cycling nach 5 Stunden
+                if (now >= nextQuestAvailable) {
+                    long timeSinceStart = now - questStartTime;
+                    long fiveHours = 5 * 60 * 60 * 1000;
+
+                    if (timeSinceStart >= fiveHours) {
+                        plugin.getPluginLogger().info("Quest-Timeout - Neue Quest wird ausgewählt");
+
+                        questLock.readLock().unlock();
+                        questLock.writeLock().lock();
+                        try {
+                            selectRandomQuest();
+                            completedPlayers.clear();
+                        } finally {
+                            questLock.writeLock().unlock();
+                            questLock.readLock().lock();
+                        }
+                    }
                 }
+            } catch (Exception e) {
+                plugin.getPluginLogger().severe("Fehler im Quest-Timer: " + e.getMessage());
+            } finally {
+                questLock.readLock().unlock();
             }
-        }, 20L * 60L, 20L * 60L); // Jede Minute prüfen
+        }, 20L * 60L, 20L * 60L); // Jede Minute
     }
 
     public boolean isQuestAvailable() {
-        return System.currentTimeMillis() >= nextQuestAvailable && currentQuest != null;
+        try {
+            questLock.readLock().lock();
+            return System.currentTimeMillis() >= nextQuestAvailable && currentQuest != null;
+        } finally {
+            questLock.readLock().unlock();
+        }
     }
 
     public long getTimeUntilAvailable() {
-        long diff = nextQuestAvailable - System.currentTimeMillis();
-        return diff > 0 ? diff : 0;
+        try {
+            questLock.readLock().lock();
+            long diff = nextQuestAvailable - System.currentTimeMillis();
+            return Math.max(0, diff);
+        } finally {
+            questLock.readLock().unlock();
+        }
     }
 
     public Quest getCurrentQuest() {
-        return currentQuest;
+        try {
+            questLock.readLock().lock();
+            return currentQuest;
+        } finally {
+            questLock.readLock().unlock();
+        }
+    }
+
+    public boolean hasCompletedCurrentQuest(UUID playerUUID) {
+        return completedPlayers.contains(playerUUID);
+    }
+
+    public void markQuestCompleted(UUID playerUUID) {
+        completedPlayers.add(playerUUID);
     }
 
     public void completeQuestForPlayer(Player player) {
-        if (currentQuest == null) {
-            plugin.getLogger().warning("completeQuestForPlayer aufgerufen aber currentQuest ist null");
-            return;
-        }
+        try {
+            questLock.writeLock().lock();
 
-        //plugin.getLogger().info("completeQuestForPlayer für " + player.getName());
-        //plugin.getLogger().info("Economy verfügbar: " + (economy != null));
-        //plugin.getLogger().info("Geld-Belohnung: " + currentQuest.moneyReward);
+            if (currentQuest == null) {
+                plugin.getLogger().warning("completeQuest aufgerufen aber Quest ist null");
+                return;
+            }
 
-        // Geld geben (wird NUR hier gegeben, nicht im Trade-Listener)
-        if (economy != null && currentQuest.moneyReward > 0) {
-            try {
-                double balanceBefore = economy.getBalance(player);
-                plugin.getLogger().info("Balance vorher: " + balanceBefore);
+            // Geld geben
+            if (economy != null && currentQuest.moneyReward > 0) {
+                try {
+                    EconomyResponse response = economy.depositPlayer(player, currentQuest.moneyReward);
 
-                // Nutze EconomyResponse wie in der offiziellen Dokumentation
-                EconomyResponse response = economy.depositPlayer(player, currentQuest.moneyReward);
-
-                if (response.transactionSuccess()) {
-                    double balanceAfter = economy.getBalance(player);
-                    //plugin.getLogger().info("✓ Transaktion erfolgreich!");
-                    //plugin.getLogger().info("Geld gegeben: " + response.amount);
-                    //plugin.getLogger().info("Balance nachher: " + balanceAfter);
-
-                    player.sendMessage(ChatColor.GOLD + "+" + String.format("%.2f", response.amount) + "$ erhalten!");
-                } else {
-                    //plugin.getLogger().severe("✗ Transaktion fehlgeschlagen!");
-                    //plugin.getLogger().severe("Fehler: " + response.errorMessage);
-                    player.sendMessage(ChatColor.RED + "Fehler beim Geld geben: " + response.errorMessage);
+                    if (response.transactionSuccess()) {
+                        player.sendMessage(ChatColor.GOLD + "+" +
+                                String.format("%.2f", response.amount) + "$ erhalten!");
+                    } else {
+                        player.sendMessage(ChatColor.RED + "Fehler: " + response.errorMessage);
+                        plugin.getPluginLogger().severe("Economy-Fehler für " + player.getName() +
+                                ": " + response.errorMessage);
+                    }
+                } catch (Exception e) {
+                    plugin.getPluginLogger().severe("Exception beim Geld geben: " + e.getMessage());
+                    e.printStackTrace();
                 }
-            } catch (Exception e) {
-                plugin.getLogger().severe("Exception beim Geld geben: " + e.getMessage());
-                e.printStackTrace();
             }
-        } else {
-            if (economy == null) {
-                plugin.getLogger().warning("Economy ist null - Vault oder Economy-Plugin nicht geladen?");
-                player.sendMessage(ChatColor.RED + "Economy-System nicht verfügbar!");
-            }
-            if (currentQuest.moneyReward <= 0) {
-                plugin.getLogger().info("Keine Geld-Belohnung konfiguriert");
-            }
-        }
 
-        // Cooldown setzen - IMMER, auch wenn es nur eine Quest gibt
-        long cooldownMinutes;
-        if (player.getUniqueId().equals(lastCompletedPlayer)) {
-            // Selber Spieler hat letzte Quest gemacht: 1 Stunde
-            cooldownMinutes = 60;
-            player.sendMessage(ChatColor.YELLOW + "Du hast die letzte Quest bereits abgeschlossen!");
-            player.sendMessage(ChatColor.YELLOW + "Nächste Quest in: 1 Stunde");
-        } else {
-            // Anderer Spieler: 30 Minuten
-            cooldownMinutes = 30;
+            // Cooldown berechnen
+            long cooldownMinutes = player.getUniqueId().equals(lastCompletedPlayer) ? 60 : 30;
+
+            nextQuestAvailable = System.currentTimeMillis() + (cooldownMinutes * 60 * 1000);
+            lastCompletedPlayer = player.getUniqueId();
+
             player.sendMessage(ChatColor.YELLOW + "Nächste Quest in: " + cooldownMinutes + " Minuten");
+
+            saveToData();
+
+            plugin.getPluginLogger().info(player.getName() + " hat Quest abgeschlossen (" +
+                    cooldownMinutes + "min Cooldown)");
+
+        } finally {
+            questLock.writeLock().unlock();
         }
-
-        nextQuestAvailable = System.currentTimeMillis() + (cooldownMinutes * 60 * 1000);
-        lastCompletedPlayer = player.getUniqueId();
-
-        // Speichere Änderungen
-        saveToData();
-
-        plugin.getLogger().info(player.getName() + " hat Quest abgeschlossen - Cooldown: " + cooldownMinutes + " Minuten");
-        plugin.getLogger().info("nextQuestAvailable: " + new java.util.Date(nextQuestAvailable));
     }
 
     public void shutdown() {
         if (questTask != null) {
             questTask.cancel();
         }
-        // Finale Speicherung
         saveToData();
+
+        trackedPlayers.clear();
+        completedPlayers.clear();
+        validQuestCache.clear();
     }
 
     public void reload() {
-        // Wenn keine Quest aktiv ist, versuche eine zu finden
-        if (currentQuest == null) {
-            plugin.getLogger().info("Keine aktive Quest - suche neue Quest nach Reload");
-            selectRandomQuest();
-        } else {
-            // Validiere aktuelle Quest nach Reload
-            if (!validateOraxenItems(currentQuest.requiredItem, currentQuest.rewardItem)) {
-                plugin.getLogger().warning("Aktuelle Quest nach Reload ungültig - suche neue Quest");
+        try {
+            questLock.writeLock().lock();
+
+            validQuestCache.clear();
+            validateQuestCache();
+
+            if (currentQuest == null ||
+                    !validateOraxenItems(currentQuest.requiredItem, currentQuest.rewardItem)) {
+                plugin.getPluginLogger().info("Quest nach Reload ungültig - wähle neue");
                 selectRandomQuest();
             }
+        } finally {
+            questLock.writeLock().unlock();
         }
     }
 
     public static class Quest {
-        private final String requiredItem;
-        private final String rewardItem;
-        private final double moneyReward;
+        final String requiredItem;
+        final String rewardItem;
+        final double moneyReward;
 
-        public Quest(String requiredItem, String rewardItem, double moneyReward) {
+        Quest(String requiredItem, String rewardItem, double moneyReward) {
             this.requiredItem = requiredItem;
             this.rewardItem = rewardItem;
             this.moneyReward = moneyReward;
         }
 
-        public String getRequiredItem() {
-            return requiredItem;
-        }
-
-        public String getRewardItem() {
-            return rewardItem;
-        }
-
-        public double getMoneyReward() {
-            return moneyReward;
-        }
+        public String getRequiredItem() { return requiredItem; }
+        public String getRewardItem() { return rewardItem; }
+        public double getMoneyReward() { return moneyReward; }
     }
 }

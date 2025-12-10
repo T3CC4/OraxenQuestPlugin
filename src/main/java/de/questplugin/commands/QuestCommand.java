@@ -7,15 +7,23 @@ import org.bukkit.ChatColor;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
+import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
-public class QuestCommand implements CommandExecutor {
+public class QuestCommand implements CommandExecutor, TabCompleter {
 
     private final OraxenQuestPlugin plugin;
+
+    private static final String PREFIX = ChatColor.GOLD + "[Quest] " + ChatColor.RESET;
+    private static final String PERMISSION_BASE = "quest.";
 
     public QuestCommand(OraxenQuestPlugin plugin) {
         this.plugin = plugin;
@@ -23,60 +31,50 @@ public class QuestCommand implements CommandExecutor {
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
-
         if (args.length == 0) {
-            sender.sendMessage(ChatColor.GOLD + "━━━━━ Quest Plugin ━━━━━");
-            sender.sendMessage(ChatColor.YELLOW + "/quest info" + ChatColor.GRAY + " - Zeigt aktuelle Quest");
-            sender.sendMessage(ChatColor.YELLOW + "/quest reload" + ChatColor.GRAY + " - Lädt Config neu");
-            sender.sendMessage(ChatColor.YELLOW + "/quest spawnnpc" + ChatColor.GRAY + " - Spawnt Quest-NPC");
-            sender.sendMessage(ChatColor.YELLOW + "/quest structures" + ChatColor.GRAY + " - Liste aller Strukturen");
-            sender.sendMessage(ChatColor.GOLD + "━━━━━━━━━━━━━━━━━━━━━━━");
+            sendHelp(sender);
             return true;
         }
 
         switch (args[0].toLowerCase()) {
             case "info":
-                showQuestInfo(sender);
-                break;
+                return handleInfo(sender);
 
             case "reload":
-                if (!sender.hasPermission("quest.reload")) {
-                    sender.sendMessage(ChatColor.RED + "Keine Berechtigung!");
-                    return true;
-                }
-                plugin.reloadConfig();
-                plugin.getDataManager().reload();
-                plugin.getDropManager().reload();
-                plugin.getChestManager().reload();
-                plugin.getQuestManager().reload();
-                sender.sendMessage(ChatColor.GREEN + "✔ Config neu geladen!");
-                break;
+                return handleReload(sender);
 
             case "spawnnpc":
-                if (!(sender instanceof Player)) {
-                    sender.sendMessage(ChatColor.RED + "Nur für Spieler!");
-                    return true;
-                }
-                if (!sender.hasPermission("quest.spawnnpc")) {
-                    sender.sendMessage(ChatColor.RED + "Keine Berechtigung!");
-                    return true;
-                }
-                spawnQuestNPC((Player) sender);
-                break;
+                return handleSpawnNPC(sender);
 
             case "structures":
-                showStructures(sender);
-                break;
+                return handleStructures(sender);
+
+            case "debug":
+                return handleDebug(sender, args);
 
             default:
-                sender.sendMessage(ChatColor.RED + "Unbekannter Befehl!");
-                break;
+                sender.sendMessage(PREFIX + ChatColor.RED + "Unbekannter Befehl!");
+                sendHelp(sender);
+                return true;
         }
-
-        return true;
     }
 
-    private void showQuestInfo(CommandSender sender) {
+    private void sendHelp(CommandSender sender) {
+        sender.sendMessage(ChatColor.GOLD + "━━━━━ Quest Plugin ━━━━━");
+        sender.sendMessage(ChatColor.YELLOW + "/quest info" +
+                ChatColor.GRAY + " - Aktuelle Quest");
+        sender.sendMessage(ChatColor.YELLOW + "/quest reload" +
+                ChatColor.GRAY + " - Config neu laden");
+        sender.sendMessage(ChatColor.YELLOW + "/quest spawnnpc" +
+                ChatColor.GRAY + " - Quest-NPC spawnen");
+        sender.sendMessage(ChatColor.YELLOW + "/quest structures" +
+                ChatColor.GRAY + " - Alle Strukturen");
+        sender.sendMessage(ChatColor.YELLOW + "/quest debug <on|off>" +
+                ChatColor.GRAY + " - Debug-Mode");
+        sender.sendMessage(ChatColor.GOLD + "━━━━━━━━━━━━━━━━━━━━━━━");
+    }
+
+    private boolean handleInfo(CommandSender sender) {
         QuestManager questManager = plugin.getQuestManager();
 
         sender.sendMessage(ChatColor.GOLD + "━━━━━━━ Quest Info ━━━━━━━");
@@ -87,36 +85,84 @@ public class QuestCommand implements CommandExecutor {
             long minutes = TimeUnit.MILLISECONDS.toMinutes(timeLeft) % 60;
 
             sender.sendMessage(ChatColor.RED + "Quest nicht verfügbar!");
-            sender.sendMessage(ChatColor.YELLOW + "Verfügbar in: " + hours + "h " + minutes + "min");
+            sender.sendMessage(ChatColor.YELLOW + "Verfügbar in: " +
+                    hours + "h " + minutes + "min");
             sender.sendMessage(ChatColor.GOLD + "━━━━━━━━━━━━━━━━━━━━━━━━━━");
-            return;
+            return true;
         }
 
         QuestManager.Quest quest = questManager.getCurrentQuest();
         if (quest == null) {
             sender.sendMessage(ChatColor.RED + "Keine Quest geladen!");
             sender.sendMessage(ChatColor.GOLD + "━━━━━━━━━━━━━━━━━━━━━━━━━━");
-            return;
+            return true;
         }
 
-        sender.sendMessage(ChatColor.YELLOW + "Benötigt: " + ChatColor.WHITE + quest.getRequiredItem());
-        sender.sendMessage(ChatColor.YELLOW + "Belohnung: " + ChatColor.GREEN + quest.getRewardItem());
+        sender.sendMessage(ChatColor.YELLOW + "Benötigt: " +
+                ChatColor.WHITE + quest.getRequiredItem());
+        sender.sendMessage(ChatColor.YELLOW + "Belohnung: " +
+                ChatColor.GREEN + quest.getRewardItem());
+
         if (quest.getMoneyReward() > 0) {
-            sender.sendMessage(ChatColor.YELLOW + "Geld: " + ChatColor.GOLD + quest.getMoneyReward() + "$");
+            sender.sendMessage(ChatColor.YELLOW + "Geld: " +
+                    ChatColor.GOLD + String.format("%.2f", quest.getMoneyReward()) + "$");
         }
+
         sender.sendMessage(ChatColor.GOLD + "━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        return true;
     }
 
-    private void spawnQuestNPC(Player player) {
+    private boolean handleReload(CommandSender sender) {
+        if (!checkPermission(sender, "reload")) {
+            return true;
+        }
+
+        sender.sendMessage(PREFIX + ChatColor.YELLOW + "Lade Config neu...");
+
+        try {
+            plugin.reloadConfig();
+            plugin.getDataManager().reload();
+            plugin.getBlockDropManager().reload();
+            plugin.getMobDropManager().reload();
+            plugin.getChestManager().reload();
+            plugin.getQuestManager().reload();
+
+            sender.sendMessage(PREFIX + ChatColor.GREEN + "✓ Config neu geladen!");
+        } catch (Exception e) {
+            sender.sendMessage(PREFIX + ChatColor.RED + "✗ Fehler beim Reload: " + e.getMessage());
+            plugin.getLogger().severe("Reload-Fehler: " + e.getMessage());
+            e.printStackTrace();
+        }
+
+        return true;
+    }
+
+    private boolean handleSpawnNPC(CommandSender sender) {
+        if (!(sender instanceof Player)) {
+            sender.sendMessage(PREFIX + ChatColor.RED + "Nur für Spieler!");
+            return true;
+        }
+
+        Player player = (Player) sender;
+
+        if (!checkPermission(sender, "spawnnpc")) {
+            return true;
+        }
+
         String npcName = plugin.getConfig().getString("quest-npc.name", "&6Quest Händler");
         EntityType npcType;
+
         try {
-            npcType = EntityType.valueOf(plugin.getConfig().getString("quest-npc.type", "VILLAGER"));
+            npcType = EntityType.valueOf(
+                    plugin.getConfig().getString("quest-npc.type", "VILLAGER")
+            );
         } catch (IllegalArgumentException e) {
             npcType = EntityType.VILLAGER;
         }
 
-        LivingEntity npc = (LivingEntity) player.getWorld().spawnEntity(player.getLocation(), npcType);
+        LivingEntity npc = (LivingEntity) player.getWorld()
+                .spawnEntity(player.getLocation(), npcType);
+
         npc.setCustomName(ChatColor.translateAlternateColorCodes('&', npcName));
         npc.setCustomNameVisible(true);
         npc.setAI(false);
@@ -124,28 +170,84 @@ public class QuestCommand implements CommandExecutor {
         npc.setPersistent(true);
         npc.setRemoveWhenFarAway(false);
 
-        // Zusätzliche Mob-Einstellungen
         if (npc instanceof org.bukkit.entity.Mob) {
             org.bukkit.entity.Mob mob = (org.bukkit.entity.Mob) npc;
             mob.setAware(false);
         }
 
-        player.sendMessage(ChatColor.GREEN + "✔ Quest-NPC gespawnt!");
-        player.sendMessage(ChatColor.YELLOW + "Name: " + npc.getCustomName());
-        player.sendMessage(ChatColor.YELLOW + "UUID: " + npc.getUniqueId());
-        player.sendMessage(ChatColor.YELLOW + "Invulnerable: " + npc.isInvulnerable());
-        player.sendMessage(ChatColor.YELLOW + "AI: " + npc.hasAI());
+        player.sendMessage(PREFIX + ChatColor.GREEN + "✓ Quest-NPC gespawnt!");
+        player.sendMessage(ChatColor.GRAY + "UUID: " + ChatColor.WHITE + npc.getUniqueId());
 
-        plugin.getLogger().info("NPC gespawnt: " + npc.getCustomName() + " (" + npc.getUniqueId() + ")");
+        return true;
     }
 
-    private void showStructures(CommandSender sender) {
+    private boolean handleStructures(CommandSender sender) {
         sender.sendMessage("");
         sender.sendMessage(StructureHelper.getFormattedStructureList());
         sender.sendMessage("");
-        sender.sendMessage(ChatColor.GRAY + "Nutze diese Namen in der config.yml unter 'chest-loot'");
-        sender.sendMessage(ChatColor.GRAY + "Beispiel: " + ChatColor.WHITE + "ancient_city:" + ChatColor.GRAY + " oder " +
-                ChatColor.WHITE + "village:" + ChatColor.GRAY + " (matched alle Dorf-Strukturen)");
-        sender.sendMessage(ChatColor.GRAY + "Siehe auch: " + ChatColor.YELLOW + "StructureType.java");
+        sender.sendMessage(ChatColor.GRAY + "Nutze diese Namen in der config.yml");
+        sender.sendMessage(ChatColor.GRAY + "Beispiel: " +
+                ChatColor.WHITE + "ancient_city:" +
+                ChatColor.GRAY + " oder " +
+                ChatColor.WHITE + "village:");
+        return true;
+    }
+
+    private boolean handleDebug(CommandSender sender, String[] args) {
+        if (!checkPermission(sender, "debug")) {
+            return true;
+        }
+
+        if (args.length < 2) {
+            boolean currentDebug = plugin.getConfig().getBoolean("debug-mode", false);
+            sender.sendMessage(PREFIX + "Debug-Mode: " +
+                    (currentDebug ? ChatColor.GREEN + "AN" : ChatColor.RED + "AUS"));
+            sender.sendMessage(ChatColor.GRAY + "Nutze: /quest debug <on|off>");
+            return true;
+        }
+
+        boolean enable = args[1].equalsIgnoreCase("on") ||
+                args[1].equalsIgnoreCase("true");
+
+        plugin.getConfig().set("debug-mode", enable);
+        plugin.saveConfig();
+
+        // Update alle Manager
+        plugin.getBlockDropManager().setDebugMode(enable);
+        plugin.getMobDropManager().setDebugMode(enable);
+
+        sender.sendMessage(PREFIX + "Debug-Mode: " +
+                (enable ? ChatColor.GREEN + "AN" : ChatColor.RED + "AUS"));
+        sender.sendMessage(ChatColor.YELLOW + "⚠ Produziert viele Logs!");
+
+        return true;
+    }
+
+    private boolean checkPermission(CommandSender sender, String permission) {
+        if (!sender.hasPermission(PERMISSION_BASE + permission)) {
+            sender.sendMessage(PREFIX + ChatColor.RED + "Keine Berechtigung!");
+            return false;
+        }
+        return true;
+    }
+
+    @Override
+    public List<String> onTabComplete(CommandSender sender, Command command,
+                                      String alias, String[] args) {
+        if (args.length == 1) {
+            return Arrays.asList("info", "reload", "spawnnpc", "structures", "debug")
+                    .stream()
+                    .filter(s -> s.startsWith(args[0].toLowerCase()))
+                    .collect(Collectors.toList());
+        }
+
+        if (args.length == 2 && args[0].equalsIgnoreCase("debug")) {
+            return Arrays.asList("on", "off")
+                    .stream()
+                    .filter(s -> s.startsWith(args[1].toLowerCase()))
+                    .collect(Collectors.toList());
+        }
+
+        return new ArrayList<>();
     }
 }

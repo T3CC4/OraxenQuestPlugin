@@ -12,6 +12,9 @@ import org.bukkit.enchantments.Enchantment;
 
 import java.util.List;
 
+/**
+ * Listener für Mob-Drops
+ */
 public class MobDropListener implements Listener {
 
     private final OraxenQuestPlugin plugin;
@@ -24,51 +27,30 @@ public class MobDropListener implements Listener {
     public void onEntityDeath(EntityDeathEvent event) {
         LivingEntity entity = event.getEntity();
 
-        // Hole Looting-Level wenn Killer ein Spieler ist
+        // Looting-Level holen
         int lootingLevel = 0;
         if (entity.getKiller() instanceof Player) {
-            Player killer = entity.getKiller();
+            Player killer = (Player) entity.getKiller();
             ItemStack weapon = killer.getInventory().getItemInMainHand();
             lootingLevel = getLootingLevel(weapon);
         }
 
-        // Hole Custom Drops mit Looting
-        List<ItemStack> customDrops = plugin.getDropManager().getMobDrops(entity.getType(), lootingLevel);
+        // Custom Drops holen (über MobDropManager)
+        List<ItemStack> customDrops = plugin.getMobDropManager()
+                .getDrops(entity.getType(), lootingLevel);
 
-        // Debug-Log
-        if (lootingLevel > 0 && !customDrops.isEmpty()) {
-            plugin.getLogger().info("Mob-Drop mit Looting " + lootingLevel + ": " + customDrops.size() + " Items");
-        }
-
-        // Füge Custom Drops hinzu
-        for (ItemStack drop : customDrops) {
-            event.getDrops().add(drop);
-        }
+        // Füge Drops hinzu
+        event.getDrops().addAll(customDrops);
     }
 
-    /**
-     * Holt das Looting-Level von der Waffe
-     * - Vanilla Looting
-     * - AdvancedEnchantments Looting
-     */
     private int getLootingLevel(ItemStack weapon) {
         if (weapon == null || !weapon.hasItemMeta()) {
             return 0;
         }
 
-        // Vanilla Looting
         int vanillaLooting = weapon.getEnchantmentLevel(Enchantment.LOOTING);
-
-        // AdvancedEnchantments Looting
         int aeLooting = AEAPIHelper.getLootingLevel(weapon);
 
-        // Nutze das höchste Level
-        int maxLevel = Math.max(vanillaLooting, aeLooting);
-
-        if (aeLooting > 0) {
-            plugin.getLogger().fine("AE Looting Level " + aeLooting + " erkannt (Vanilla: " + vanillaLooting + ")");
-        }
-
-        return maxLevel;
+        return Math.max(vanillaLooting, aeLooting);
     }
 }

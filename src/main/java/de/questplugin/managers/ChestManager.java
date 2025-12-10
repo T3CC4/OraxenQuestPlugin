@@ -5,7 +5,6 @@ import de.questplugin.enums.StructureType;
 import de.questplugin.utils.StructureHelper;
 import io.th0rgal.oraxen.api.OraxenItems;
 import org.bukkit.Location;
-import org.bukkit.Material;
 import org.bukkit.block.Chest;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.inventory.Inventory;
@@ -13,83 +12,71 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.loot.LootTable;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ThreadLocalRandom;
 
-public class ChestManager {
+/**
+ * Verwaltet Chest-Loot
+ */
+public class ChestManager extends BaseManager {
 
-    private final OraxenQuestPlugin plugin;
-    private final Set<Location> processedChests;
-    private final Map<String, List<ChestLoot>> lootTableLoots;
-    private final Random random;
+    private final Set<Location> processedChests = ConcurrentHashMap.newKeySet();
+    private final Map<String, List<DropEntry>> lootCache = new ConcurrentHashMap<>();
+    private final Queue<Location> processedQueue = new LinkedList<>();
+
+    private static final int MAX_PROCESSED_CHESTS = 10000;
+    private static final int SAVE_INTERVAL = 50;
+
+    private volatile boolean isLoaded = false;
+    private int saveCounter = 0;
 
     public ChestManager(OraxenQuestPlugin plugin) {
-        this.plugin = plugin;
-        this.processedChests = new HashSet<>();
-        this.lootTableLoots = new HashMap<>();
-        this.random = new Random();
+        super(plugin);
         loadChestLoots();
         loadProcessedChests();
+        isLoaded = true;
     }
 
     private void loadChestLoots() {
         ConfigurationSection section = plugin.getConfig().getConfigurationSection("chest-loot");
-        if (section == null) return;
+        if (section == null) {
+            warn("Keine chest-loot Sektion in Config!");
+            return;
+        }
 
-        int validStructures = 0;
-        int unknownStructures = 0;
+        lootCache.clear();
+        int totalItems = 0;
 
         for (String lootTableKey : section.getKeys(false)) {
-            List<ChestLoot> loots = new ArrayList<>();
-            ConfigurationSection lootSection = section.getConfigurationSection(lootTableKey);
+            List<DropEntry> drops = loadDropEntries(
+                    section.getConfigurationSection(lootTableKey),
+                    "chest-loot." + lootTableKey
+            );
 
-            if (lootSection != null) {
-                for (String key : lootSection.getKeys(false)) {
-                    String oraxenItem = lootSection.getString(key + ".oraxen-item");
-                    double chance = lootSection.getDouble(key + ".chance");
-                    int minAmount = lootSection.getInt(key + ".min-amount", 1);
-                    int maxAmount = lootSection.getInt(key + ".max-amount", 1);
+            if (!drops.isEmpty()) {
+                lootCache.put(lootTableKey.toLowerCase(), drops);
+                totalItems += drops.size();
 
-                    loots.add(new ChestLoot(oraxenItem, chance, minAmount, maxAmount));
-                }
-            }
-
-            // Speichere mit lowercase key für einfacheren Vergleich
-            lootTableLoots.put(lootTableKey.toLowerCase(), loots);
-
-            // Validiere gegen StructureType (optional - nur zur Info)
-            StructureType structureType = StructureHelper.fromString(lootTableKey);
-            if (structureType != null) {
-                validStructures++;
-                plugin.getLogger().info("Chest-Loot geladen für Struktur: " +
-                        structureType.getDisplayName() + " (" + loots.size() + " Items)");
-            } else {
-                // Prüfe ob es ein Partial-Match ist (z.B. "village" für alle Village-Strukturen)
-                boolean isPartialMatch = false;
-                for (StructureType type : StructureType.values()) {
-                    if (StructureHelper.matchesStructure(lootTableKey, type)) {
-                        isPartialMatch = true;
-                        break;
-                    }
-                }
-
-                if (isPartialMatch) {
-                    validStructures++;
-                    plugin.getLogger().info("Chest-Loot geladen (Partial-Match): " +
-                            lootTableKey + " (" + loots.size() + " Items)");
-                } else {
-                    unknownStructures++;
-                    plugin.getLogger().warning("Unbekannte Struktur in Config: " + lootTableKey +
-                            " (siehe StructureType.java für verfügbare Strukturen)");
-                }
+                debug("Chest-Loot: '" + lootTableKey + "' → " + drops.size() + " Items");
             }
         }
 
-        plugin.getLogger().info("Chest-Loot geladen: " + validStructures + " Strukturen, " +
-                unknownStructures + " unbekannte");
+        info("Chest-Loot: " + totalItems + " Items für " + lootCache.size() + " Strukturen");
     }
 
     private void loadProcessedChests() {
-        processedChests.addAll(plugin.getDataManager().loadProcessedChests());
-        plugin.getLogger().info(processedChests.size() + " verarbeitete Kisten geladen");
+        Set<Location> loaded = plugin.getDataManager().loadProcessedChests();
+
+        if (loaded.size() > MAX_PROCESSED_CHESTS) {
+            warn("Zu viele Kisten (" + loaded.size() + "), limitiere auf " + MAX_PROCESSED_CHESTS);
+            List<Location> sorted = new ArrayList<>(loaded);
+            loaded = new HashSet<>(sorted.subList(sorted.size() - MAX_PROCESSED_CHESTS, sorted.size()));
+        }
+
+        processedChests.addAll(loaded);
+        processedQueue.addAll(loaded);
+
+        info(processedChests.size() + " verarbeitete Kisten geladen");
     }
 
     public boolean isProcessed(Location location) {
@@ -97,140 +84,192 @@ public class ChestManager {
     }
 
     public void markProcessed(Location location) {
+        if (!isLoaded) return;
+
+        if (processedChests.size() >= MAX_PROCESSED_CHESTS && !processedChests.contains(location)) {
+            Location oldest = processedQueue.poll();
+            if (oldest != null) {
+                processedChests.remove(oldest);
+            }
+        }
+
         if (processedChests.add(location)) {
-            // Speichere in regelmäßigen Intervallen (alle 10 Kisten)
-            if (processedChests.size() % 10 == 0) {
+            processedQueue.offer(location);
+
+            saveCounter++;
+            if (saveCounter >= SAVE_INTERVAL) {
                 saveData();
+                saveCounter = 0;
             }
         }
     }
 
     public void populateChest(Chest chest, LootTable lootTable) {
-        if (lootTable == null) {
+        if (lootTable == null || chest == null) {
+            warn("populateChest: Chest oder LootTable null!");
             return;
         }
 
-        // Hole LootTable Key und extrahiere den Namen
         String lootTableKey = lootTable.getKey().getKey();
 
-        // Finde passende Config basierend auf LootTable
-        List<ChestLoot> loots = findMatchingLoots(lootTableKey);
+        debug("=== Chest Populate ===");
+        debug("LootTable: " + lootTableKey);
+
+        List<DropEntry> loots = findMatchingLoots(lootTableKey);
 
         if (loots == null || loots.isEmpty()) {
+            debug("  → KEIN Match");
+            debug("======================");
             return;
         }
 
-        Inventory inv = chest.getInventory();
+        debug("  → " + loots.size() + " Loots gefunden");
 
-        for (ChestLoot loot : loots) {
-            // Prüfe zuerst ob Item existiert
-            if (!OraxenItems.exists(loot.oraxenItemId)) {
-                continue;
+        Inventory inv = chest.getInventory();
+        ThreadLocalRandom random = ThreadLocalRandom.current();
+
+        List<ItemStack> drops = new ArrayList<>();
+
+        for (DropEntry loot : loots) {
+            double roll = random.nextDouble() * 100;
+            boolean success = roll < loot.chance;
+
+            if (debugMode) {
+                debug("  Loot: " + loot.oraxenItemId);
+                debug("    Chance: " + loot.chance + "%");
+                debug("    Roll: " + String.format("%.2f", roll));
+                debug("    " + (success ? "✓ JA" : "✗ NEIN"));
             }
 
-            if (random.nextDouble() * 100 < loot.chance) {
-                ItemStack item = OraxenItems.getItemById(loot.oraxenItemId).build();
+            if (success) {
+                ItemStack item = buildItem(loot.oraxenItemId);
                 if (item != null) {
-                    int amount = loot.minAmount + random.nextInt(loot.maxAmount - loot.minAmount + 1);
+                    int amount = random.nextInt(loot.minAmount, loot.maxAmount + 1);
                     item.setAmount(amount);
+                    drops.add(item);
 
-                    // Finde einen freien Slot
-                    int slot = random.nextInt(inv.getSize());
-                    int attempts = 0;
-                    while (inv.getItem(slot) != null && attempts < inv.getSize()) {
-                        slot = (slot + 1) % inv.getSize();
-                        attempts++;
-                    }
-
-                    if (inv.getItem(slot) == null) {
-                        inv.setItem(slot, item);
-                    }
+                    debug("    → " + item.getType() + " x" + amount);
                 }
             }
         }
+
+        // Platziere Items
+        if (!drops.isEmpty()) {
+            List<Integer> freeSlots = new ArrayList<>();
+            for (int i = 0; i < inv.getSize(); i++) {
+                if (inv.getItem(i) == null) {
+                    freeSlots.add(i);
+                }
+            }
+
+            Collections.shuffle(freeSlots);
+
+            int placed = 0;
+            for (int i = 0; i < Math.min(drops.size(), freeSlots.size()); i++) {
+                inv.setItem(freeSlots.get(i), drops.get(i));
+                placed++;
+            }
+
+            debug("  → " + placed + " Items platziert");
+        } else {
+            debug("  → 0 Items (Rolls fehlgeschlagen)");
+        }
+
+        debug("======================");
     }
 
-    private List<ChestLoot> findMatchingLoots(String lootTableKey) {
-        String normalizedKey = lootTableKey.toLowerCase();
+    private List<DropEntry> findMatchingLoots(String lootTableKey) {
+        String normalized = lootTableKey.toLowerCase();
 
-        plugin.getLogger().fine("Suche Loot für LootTable: " + lootTableKey);
+        debug("  Suche: '" + lootTableKey + "'");
+        debug("  Keys: " + lootCache.keySet());
 
-        // 1. Direkter Match
-        if (lootTableLoots.containsKey(normalizedKey)) {
-            plugin.getLogger().fine("✓ Direkt-Match gefunden: " + normalizedKey);
-            return lootTableLoots.get(normalizedKey);
+        // 1. Direct Match
+        if (lootCache.containsKey(normalized)) {
+            debug("  → Direct Match");
+            return lootCache.get(normalized);
         }
 
-        // 2. Extrahiere den reinen Struktur-Namen aus dem LootTable-Key
-        // z.B. "minecraft:chests/village_weaponsmith" → "village_weaponsmith"
-        String structureName = normalizedKey;
-        if (structureName.contains("/")) {
-            structureName = structureName.substring(structureName.lastIndexOf("/") + 1);
-        }
-        if (structureName.contains(":")) {
-            structureName = structureName.substring(structureName.indexOf(":") + 1);
+        // 2. Extrahierter Name
+        String extracted = extractStructureName(normalized);
+        debug("  Extrahiert: '" + extracted + "'");
+
+        if (lootCache.containsKey(extracted)) {
+            debug("  → Match mit extrahiertem Namen");
+            return lootCache.get(extracted);
         }
 
-        plugin.getLogger().fine("Extrahierter Struktur-Name: " + structureName);
-
-        // 3. Prüfe gegen StructureType Enum
-        StructureType structureType = StructureHelper.fromString(structureName);
+        // 3. StructureType Match
+        StructureType structureType = StructureHelper.fromString(extracted);
         if (structureType != null) {
-            // Suche nach Config-Einträgen die zu diesem StructureType passen
-            for (Map.Entry<String, List<ChestLoot>> entry : lootTableLoots.entrySet()) {
+            debug("  StructureType: " + structureType);
+
+            for (Map.Entry<String, List<DropEntry>> entry : lootCache.entrySet()) {
                 if (StructureHelper.matchesStructure(entry.getKey(), structureType)) {
-                    plugin.getLogger().fine("✓ StructureType-Match gefunden: " +
-                            entry.getKey() + " → " + structureType.getDisplayName());
+                    debug("  → StructureType Match: '" + entry.getKey() + "'");
                     return entry.getValue();
                 }
             }
         }
 
-        // 4. Teil-Matches (Legacy-Support)
-        // z.B. "village_weaponsmith" matched mit "village"
-        for (Map.Entry<String, List<ChestLoot>> entry : lootTableLoots.entrySet()) {
+        // 4. Partial Match
+        debug("  Versuche Partial Match...");
+        for (Map.Entry<String, List<DropEntry>> entry : lootCache.entrySet()) {
             String configKey = entry.getKey();
 
-            // Prüfe ob der LootTable-Key den Config-Key enthält
-            if (structureName.contains(configKey)) {
-                plugin.getLogger().fine("✓ Partial-Match gefunden: " + configKey + " in " + structureName);
+            if (extracted.contains(configKey)) {
+                debug("  → Partial: '" + extracted + "' contains '" + configKey + "'");
                 return entry.getValue();
             }
 
-            // Prüfe auch umgekehrt (für spezifischere Matches)
-            if (configKey.contains(structureName)) {
-                plugin.getLogger().fine("✓ Reverse-Match gefunden: " + structureName + " in " + configKey);
+            if (configKey.contains(extracted)) {
+                debug("  → Reverse: '" + configKey + "' contains '" + extracted + "'");
                 return entry.getValue();
             }
         }
 
-        plugin.getLogger().fine("✗ Kein Match gefunden für: " + lootTableKey);
+        debug("  → KEIN Match");
         return null;
     }
 
-    public void saveData() {
-        plugin.getDataManager().saveProcessedChests(processedChests);
+    private String extractStructureName(String lootTableKey) {
+        String name = lootTableKey;
+
+        int colonIndex = name.indexOf(':');
+        if (colonIndex != -1) {
+            name = name.substring(colonIndex + 1);
+        }
+
+        int slashIndex = name.lastIndexOf('/');
+        if (slashIndex != -1) {
+            name = name.substring(slashIndex + 1);
+        }
+
+        return name;
     }
 
+    public void saveData() {
+        try {
+            plugin.getDataManager().saveProcessedChests(processedChests);
+        } catch (Exception e) {
+            warn("Speichern fehlgeschlagen: " + e.getMessage());
+        }
+    }
+
+    @Override
     public void reload() {
+        isLoaded = false;
+
         processedChests.clear();
-        lootTableLoots.clear();
+        processedQueue.clear();
+        lootCache.clear();
+        saveCounter = 0;
+
+        debugMode = plugin.getConfig().getBoolean("debug-mode", false);
         loadChestLoots();
         loadProcessedChests();
-        plugin.getLogger().info("Chest-Loot-Config neu geladen: " + lootTableLoots.size() + " LootTable-Typen");
-    }
 
-    private static class ChestLoot {
-        String oraxenItemId;
-        double chance;
-        int minAmount;
-        int maxAmount;
-
-        ChestLoot(String oraxenItemId, double chance, int minAmount, int maxAmount) {
-            this.oraxenItemId = oraxenItemId;
-            this.chance = chance;
-            this.minAmount = minAmount;
-            this.maxAmount = maxAmount;
-        }
+        isLoaded = true;
+        info("ChestManager neu geladen");
     }
 }
