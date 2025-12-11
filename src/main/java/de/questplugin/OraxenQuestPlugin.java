@@ -18,6 +18,8 @@ public class OraxenQuestPlugin extends JavaPlugin {
     private MobDropManager mobDropManager;
     private QuestManager questManager;
     private ChestManager chestManager;
+    private CraftingManager craftingManager;
+    private MobEquipmentManager mobEquipmentManager;
 
     // Listener (für Cleanup)
     private BlockBreakListener blockBreakListener;
@@ -54,15 +56,20 @@ public class OraxenQuestPlugin extends JavaPlugin {
         blockDropManager = new BlockDropManager(this);
         mobDropManager = new MobDropManager(this);
         chestManager = new ChestManager(this);
+        craftingManager = new CraftingManager(this);
+        mobEquipmentManager = new MobEquipmentManager(this);
         questManager = new QuestManager(this);
 
         // Listener registrieren
         blockBreakListener = new BlockBreakListener(this);
         Bukkit.getPluginManager().registerEvents(blockBreakListener, this);
         Bukkit.getPluginManager().registerEvents(new MobDropListener(this), this);
+        Bukkit.getPluginManager().registerEvents(new MobSpawnListener(this), this);
         Bukkit.getPluginManager().registerEvents(new ChestListener(this), this);
         Bukkit.getPluginManager().registerEvents(new NPCInteractListener(this), this);
         Bukkit.getPluginManager().registerEvents(new TradeCompleteListener(this), this);
+        Bukkit.getPluginManager().registerEvents(new AnvilListener(this), this);
+        Bukkit.getPluginManager().registerEvents(new SmithingListener(this), this);
 
         // Commands
         QuestCommand questCommand = new QuestCommand(this);
@@ -128,6 +135,14 @@ public class OraxenQuestPlugin extends JavaPlugin {
 
     public ChestManager getChestManager() {
         return chestManager;
+    }
+
+    public CraftingManager getCraftingManager() {
+        return craftingManager;
+    }
+
+    public MobEquipmentManager getMobEquipmentManager() {
+        return mobEquipmentManager;
     }
 
     /**
