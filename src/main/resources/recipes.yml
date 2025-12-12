@@ -1,0 +1,79 @@
+# ==================== ANVIL REZEPTE ====================
+# Format:
+#   rezept_name:
+#     input: oraxen_item_id           # Item das reingelegt wird
+#     output: oraxen_item_id          # Item das rauskommt
+#     output-amount: 1                # Anzahl des Outputs (optional, default: 1)
+#     exp-cost: 5                     # XP-Kosten (optional, default: 0)
+#
+# Beispiel: Reparatur, Upgrade, Kombination
+anvil-recipes:
+  repair_mythril_sword:
+    input: "damaged_mythril_sword"
+    output: "mythril_sword"
+    output-amount: 1
+    exp-cost: 10
+
+  upgrade_iron_to_steel:
+    input: "iron_ingot"
+    output: "steel_ingot"
+    output-amount: 1
+    exp-cost: 5
+
+  compress_gems:
+    input: "ruby_shard"
+    output: "ruby"
+    output-amount: 1
+    exp-cost: 3
+
+  forge_legendary_blade:
+    input: "dragon_scale"
+    output: "legendary_sword"
+    output-amount: 1
+    exp-cost: 30
+
+# ==================== SMITHING TABLE REZEPTE ====================
+# Format:
+#   rezept_name:
+#     input: oraxen_item_id           # Basis-Item (linker Slot)
+#     second-input: oraxen_item_id    # Upgrade-Material (rechter Slot, optional)
+#     output: oraxen_item_id          # Ergebnis
+#     output-amount: 1                # Anzahl des Outputs (optional, default: 1)
+#     exp-cost: 5                     # XP-Kosten (optional, default: 0)
+#
+# Beispiel: Rüstungs-Upgrades, Waffen-Verbesserungen
+smithing-recipes:
+  netherite_upgrade:
+    input: "diamond_sword"
+    second-input: "netherite_ingot"
+    output: "netherite_sword"
+    output-amount: 1
+    exp-cost: 15
+
+  enchant_blade:
+    input: "steel_sword"
+    second-input: "magic_crystal"
+    output: "enchanted_steel_sword"
+    output-amount: 1
+    exp-cost: 20
+
+  mythril_armor_upgrade:
+    input: "iron_chestplate"
+    second-input: "mythril_bar"
+    output: "mythril_chestplate"
+    output-amount: 1
+    exp-cost: 25
+
+  imbue_tool:
+    input: "iron_pickaxe"
+    second-input: "fire_essence"
+    output: "flame_pickaxe"
+    output-amount: 1
+    exp-cost: 10
+
+  # Rezept OHNE zweites Item (nur Basis-Transformation)
+  simple_upgrade:
+    input: "basic_gem"
+    output: "polished_gem"
+    output-amount: 2
+    exp-cost: 5

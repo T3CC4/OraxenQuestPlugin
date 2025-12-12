@@ -46,6 +46,16 @@ public class BlockBreakListener implements Listener {
         }
 
         ItemStack tool = player.getInventory().getItemInMainHand();
+
+        // Silk Touch Check - keine Custom Drops
+        if (hasSilkTouch(tool)) {
+            if (debugMode) {
+                plugin.getPluginLogger().info("Silk Touch aktiv - keine Custom Drops");
+                plugin.getPluginLogger().info("==================");
+            }
+            return;
+        }
+
         int fortuneLevel = getFortuneLevel(tool);
 
         // VeinMiner Detection
@@ -94,6 +104,30 @@ public class BlockBreakListener implements Listener {
         if (debugMode) {
             plugin.getPluginLogger().info("==================");
         }
+    }
+
+    /**
+     * Prüft ob Tool Silk Touch hat (Vanilla oder AE)
+     */
+    private boolean hasSilkTouch(ItemStack tool) {
+        if (tool == null || !tool.hasItemMeta()) {
+            return false;
+        }
+
+        // Vanilla Silk Touch
+        if (tool.containsEnchantment(Enchantment.SILK_TOUCH)) {
+            return true;
+        }
+
+        // AdvancedEnchantments Silk Touch
+        if (AEAPIHelper.isAvailable()) {
+            int aeSilkTouch = AEAPIHelper.getEnchantmentLevel(tool, "Silk Touch");
+            if (aeSilkTouch > 0) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private int getFortuneLevel(ItemStack tool) {
