@@ -1,7 +1,6 @@
 package de.questplugin.managers;
 
 import de.questplugin.OraxenQuestPlugin;
-import de.questplugin.enums.CraftingType;
 import io.th0rgal.oraxen.api.OraxenItems;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.inventory.ItemStack;
@@ -11,12 +10,12 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Verwaltet Custom Crafting Rezepte für Anvil und Smithing Table
+ * Verwaltet Custom Crafting Rezepte für Anvil
  */
 public class CraftingManager extends BaseManager {
 
-    // Rezept-Cache: CraftingType -> RecipeKey -> Recipe
-    private final Map<CraftingType, Map<String, CraftingRecipe>> recipes = new ConcurrentHashMap<>();
+    // Rezept-Cache: RecipeKey -> Recipe
+    private final Map<String, CraftingRecipe> recipes = new ConcurrentHashMap<>();
 
     public CraftingManager(OraxenQuestPlugin plugin) {
         super(plugin);
@@ -36,61 +35,59 @@ public class CraftingManager extends BaseManager {
                 org.bukkit.configuration.file.YamlConfiguration.loadConfiguration(recipesFile);
 
         // Lade Anvil-Rezepte
-        loadRecipesForType(CraftingType.ANVIL, "anvil-recipes", recipesConfig);
+        loadAnvilRecipes("anvil-recipes", recipesConfig);
 
-        // Lade Smithing-Rezepte
-        loadRecipesForType(CraftingType.SMITHING_TABLE, "smithing-recipes", recipesConfig);
-
-        int totalRecipes = recipes.values().stream()
-                .mapToInt(Map::size)
-                .sum();
-
-        info("Crafting-Rezepte: " + totalRecipes + " geladen");
+        info("Crafting-Rezepte: " + recipes.size() + " geladen");
     }
 
-    private void loadRecipesForType(CraftingType type, String configPath,
-                                    org.bukkit.configuration.file.FileConfiguration config) {
+    private void loadAnvilRecipes(String configPath,
+                                  org.bukkit.configuration.file.FileConfiguration config) {
         ConfigurationSection section = config.getConfigurationSection(configPath);
         if (section == null) {
             debug("Keine " + configPath + " Sektion in recipes.yml");
             return;
         }
 
-        Map<String, CraftingRecipe> typeRecipes = new ConcurrentHashMap<>();
         int loaded = 0;
 
         for (String recipeKey : section.getKeys(false)) {
             ConfigurationSection recipeSection = section.getConfigurationSection(recipeKey);
             if (recipeSection == null) continue;
 
-            CraftingRecipe recipe = loadRecipe(type, recipeKey, recipeSection);
+            CraftingRecipe recipe = loadRecipe(recipeKey, recipeSection);
             if (recipe != null) {
-                typeRecipes.put(recipeKey, recipe);
+                recipes.put(recipeKey, recipe);
                 loaded++;
 
-                debug("Rezept geladen: " + type + "/" + recipeKey);
-                debug("  Input: " + recipe.getInputItem());
+                debug("Rezept geladen: " + recipeKey);
+                debug("  First Input: " + recipe.getFirstInput());
                 if (recipe.getSecondInput() != null) {
-                    debug("  Second: " + recipe.getSecondInput());
+                    debug("  Second Input: " + recipe.getSecondInput());
                 }
                 debug("  Output: " + recipe.getOutputItem() + " x" + recipe.getOutputAmount());
                 debug("  Cost: " + recipe.getExpCost() + " XP");
             }
         }
 
-        recipes.put(type, typeRecipes);
-        info(type.getDisplayName() + ": " + loaded + " Rezepte");
+        info("Anvil-Rezepte: " + loaded + " geladen");
     }
 
-    private CraftingRecipe loadRecipe(CraftingType type, String key, ConfigurationSection section) {
-        String inputItem = section.getString("input");
+    private CraftingRecipe loadRecipe(String key, ConfigurationSection section) {
+        String firstInput = section.getString("first-input");
+        String secondInput = section.getString("second-input");
         String outputItem = section.getString("output");
         int outputAmount = section.getInt("output-amount", 1);
         int expCost = section.getInt("exp-cost", 0);
 
         // Validierung
-        if (!validateItem(inputItem)) {
-            warn("Rezept '" + key + "': Input-Item '" + inputItem + "' ungültig");
+        if (!validateItem(firstInput)) {
+            warn("Rezept '" + key + "': First-Input '" + firstInput + "' ungültig");
+            return null;
+        }
+
+        // Second-Input ist optional
+        if (secondInput != null && !validateItem(secondInput)) {
+            warn("Rezept '" + key + "': Second-Input '" + secondInput + "' ungültig");
             return null;
         }
 
@@ -104,20 +101,9 @@ public class CraftingManager extends BaseManager {
             return null;
         }
 
-        // Smithing Table: optionales zweites Item
-        String secondInput = null;
-        if (type == CraftingType.SMITHING_TABLE) {
-            secondInput = section.getString("second-input");
-            if (secondInput != null && !validateItem(secondInput)) {
-                warn("Rezept '" + key + "': Second-Input '" + secondInput + "' ungültig");
-                return null;
-            }
-        }
-
         return new CraftingRecipe(
                 key,
-                type,
-                inputItem,
+                firstInput,
                 secondInput,
                 outputItem,
                 outputAmount,
@@ -126,69 +112,47 @@ public class CraftingManager extends BaseManager {
     }
 
     /**
-     * Findet Rezept für Anvil (ein Item)
+     * Findet Rezept für Anvil (zwei Items)
      */
-    public CraftingRecipe findAnvilRecipe(ItemStack input) {
-        if (input == null) return null;
+    public CraftingRecipe findAnvilRecipe(ItemStack firstInput, ItemStack secondInput) {
+        if (firstInput == null) return null;
 
-        String inputId = OraxenItems.getIdByItem(input);
-        if (inputId == null) return null;
-
-        return findRecipe(CraftingType.ANVIL, inputId, null);
-    }
-
-    /**
-     * Findet Rezept für Smithing Table (zwei Items)
-     */
-    public CraftingRecipe findSmithingRecipe(ItemStack input, ItemStack secondInput) {
-        if (input == null) return null;
-
-        String inputId = OraxenItems.getIdByItem(input);
-        if (inputId == null) return null;
+        String firstInputId = OraxenItems.getIdByItem(firstInput);
+        if (firstInputId == null) return null;
 
         String secondInputId = null;
         if (secondInput != null) {
             secondInputId = OraxenItems.getIdByItem(secondInput);
         }
 
-        return findRecipe(CraftingType.SMITHING_TABLE, inputId, secondInputId);
+        return findRecipe(firstInputId, secondInputId);
     }
 
     /**
      * Interne Methode zum Finden eines Rezepts
      */
-    private CraftingRecipe findRecipe(CraftingType type, String inputId, String secondInputId) {
-        Map<String, CraftingRecipe> typeRecipes = recipes.get(type);
-        if (typeRecipes == null || typeRecipes.isEmpty()) {
+    private CraftingRecipe findRecipe(String firstInputId, String secondInputId) {
+        if (recipes.isEmpty()) {
             return null;
         }
 
-        for (CraftingRecipe recipe : typeRecipes.values()) {
+        for (CraftingRecipe recipe : recipes.values()) {
             // Prüfe erstes Item
-            if (!recipe.getInputItem().equalsIgnoreCase(inputId)) {
+            if (!recipe.getFirstInput().equalsIgnoreCase(firstInputId)) {
                 continue;
             }
 
-            // Anvil: kein zweites Item nötig
-            if (type == CraftingType.ANVIL) {
+            // Kein zweites Item konfiguriert = Match
+            if (recipe.getSecondInput() == null && secondInputId == null) {
                 debug("Match gefunden: " + recipe.getKey());
                 return recipe;
             }
 
-            // Smithing: zweites Item prüfen
-            if (type == CraftingType.SMITHING_TABLE) {
-                // Kein zweites Item konfiguriert = Match
-                if (recipe.getSecondInput() == null) {
-                    debug("Match gefunden: " + recipe.getKey());
-                    return recipe;
-                }
-
-                // Zweites Item muss matchen
-                if (secondInputId != null &&
-                        recipe.getSecondInput().equalsIgnoreCase(secondInputId)) {
-                    debug("Match gefunden: " + recipe.getKey());
-                    return recipe;
-                }
+            // Zweites Item muss matchen
+            if (recipe.getSecondInput() != null && secondInputId != null &&
+                    recipe.getSecondInput().equalsIgnoreCase(secondInputId)) {
+                debug("Match gefunden: " + recipe.getKey());
+                return recipe;
             }
         }
 
@@ -196,19 +160,17 @@ public class CraftingManager extends BaseManager {
     }
 
     /**
-     * Gibt alle Rezepte eines Typs zurück
+     * Gibt alle Rezepte zurück
      */
-    public Collection<CraftingRecipe> getRecipes(CraftingType type) {
-        Map<String, CraftingRecipe> typeRecipes = recipes.get(type);
-        return typeRecipes != null ? typeRecipes.values() : Collections.emptyList();
+    public Collection<CraftingRecipe> getRecipes() {
+        return recipes.values();
     }
 
     /**
      * Gibt Rezept nach Key zurück
      */
-    public CraftingRecipe getRecipe(CraftingType type, String key) {
-        Map<String, CraftingRecipe> typeRecipes = recipes.get(type);
-        return typeRecipes != null ? typeRecipes.get(key) : null;
+    public CraftingRecipe getRecipe(String key) {
+        return recipes.get(key);
     }
 
     @Override
@@ -223,19 +185,16 @@ public class CraftingManager extends BaseManager {
      */
     public static class CraftingRecipe {
         private final String key;
-        private final CraftingType type;
-        private final String inputItem;
+        private final String firstInput;
         private final String secondInput;
         private final String outputItem;
         private final int outputAmount;
         private final int expCost;
 
-        public CraftingRecipe(String key, CraftingType type, String inputItem,
-                              String secondInput, String outputItem,
-                              int outputAmount, int expCost) {
+        public CraftingRecipe(String key, String firstInput, String secondInput,
+                              String outputItem, int outputAmount, int expCost) {
             this.key = key;
-            this.type = type;
-            this.inputItem = inputItem;
+            this.firstInput = firstInput;
             this.secondInput = secondInput;
             this.outputItem = outputItem;
             this.outputAmount = outputAmount;
@@ -243,8 +202,7 @@ public class CraftingManager extends BaseManager {
         }
 
         public String getKey() { return key; }
-        public CraftingType getType() { return type; }
-        public String getInputItem() { return inputItem; }
+        public String getFirstInput() { return firstInput; }
         public String getSecondInput() { return secondInput; }
         public String getOutputItem() { return outputItem; }
         public int getOutputAmount() { return outputAmount; }

@@ -1,26 +1,19 @@
 package de.questplugin.managers;
 
 import de.questplugin.OraxenQuestPlugin;
-import io.th0rgal.oraxen.api.OraxenItems;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.inventory.ItemStack;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Basis-Manager mit gemeinsamen Funktionen für alle Manager
+ * Basis-Manager mit gemeinsamen Funktionen
  */
 public abstract class BaseManager {
 
     protected final OraxenQuestPlugin plugin;
-    protected volatile boolean debugMode;
-
-    // Item-Cache für Performance (shared across managers)
-    private static final Map<String, ItemStack> ITEM_CACHE = new ConcurrentHashMap<>();
-    private static final int MAX_CACHE_SIZE = 100;
+    protected boolean debugMode;
 
     public BaseManager(OraxenQuestPlugin plugin) {
         this.plugin = plugin;
@@ -28,64 +21,52 @@ public abstract class BaseManager {
     }
 
     /**
-     * Debug-Log (nur wenn debug-mode aktiviert)
+     * Baut Oraxen-Item aus ID
      */
-    protected void debug(String message) {
-        if (debugMode) {
-            plugin.getPluginLogger().info(message);
-        }
-    }
-
-    /**
-     * Info-Log (immer)
-     */
-    protected void info(String message) {
-        plugin.getPluginLogger().info(message);
-    }
-
-    /**
-     * Warning-Log (immer)
-     */
-    protected void warn(String message) {
-        plugin.getLogger().warning(message);
-    }
-
-    /**
-     * Baut Oraxen-Item mit Caching
-     */
-    protected ItemStack buildItem(String itemId) {
-        // Cache-Lookup
-        ItemStack cached = ITEM_CACHE.get(itemId);
-        if (cached != null) {
-            return cached.clone();
+    protected ItemStack buildItem(String oraxenItemId) {
+        if (oraxenItemId == null || oraxenItemId.isEmpty()) {
+            warn("Oraxen-Item ID ist null oder leer!");
+            return null;
         }
 
         try {
-            ItemStack item = OraxenItems.getItemById(itemId).build();
+            // Oraxen API direkt nutzen
+            io.th0rgal.oraxen.items.ItemBuilder builder =
+                    io.th0rgal.oraxen.api.OraxenItems.getItemById(oraxenItemId);
 
-            if (item != null && ITEM_CACHE.size() < MAX_CACHE_SIZE) {
-                ITEM_CACHE.put(itemId, item.clone());
+            if (builder != null) {
+                return builder.build();
             }
 
-            return item;
+            warn("Oraxen-Item nicht gefunden: '" + oraxenItemId + "'");
+            return null;
+
         } catch (Exception e) {
-            warn("Fehler beim Erstellen von '" + itemId + "': " + e.getMessage());
+            warn("Fehler beim Laden von Oraxen-Item '" + oraxenItemId + "': " + e.getMessage());
             return null;
         }
     }
 
     /**
-     * Validiert Oraxen-Item
+     * Validiert ob Item existiert
      */
-    protected boolean validateItem(String itemId) {
-        if (itemId == null || itemId.isEmpty()) {
+    protected boolean validateItem(String oraxenItemId) {
+        if (oraxenItemId == null || oraxenItemId.isEmpty()) {
             return false;
         }
-        return OraxenItems.exists(itemId);
+
+        try {
+            io.th0rgal.oraxen.items.ItemBuilder builder =
+                    io.th0rgal.oraxen.api.OraxenItems.getItemById(oraxenItemId);
+            return builder != null;
+
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     /**
-     * Lädt Drop-Einträge aus Config-Section
+     * Lädt Drop-Einträge aus ConfigurationSection
      */
     protected List<DropEntry> loadDropEntries(ConfigurationSection section, String path) {
         List<DropEntry> drops = new ArrayList<>();
@@ -96,18 +77,27 @@ public abstract class BaseManager {
         }
 
         for (String key : section.getKeys(false)) {
-            String itemId = section.getString(key + ".oraxen-item");
+            ConfigurationSection entrySection = section.getConfigurationSection(key);
+            if (entrySection == null) continue;
 
+            String itemId = entrySection.getString("oraxen-item");
+            double chance = entrySection.getDouble("chance", 0);
+            int minAmount = entrySection.getInt("min-amount", 1);
+            int maxAmount = entrySection.getInt("max-amount", 1);
+
+            // Validierung
             if (!validateItem(itemId)) {
-                warn(path + "." + key + ": Item '" + itemId + "' ungültig/nicht vorhanden");
+                warn(path + "." + key + ": Item '" + itemId + "' ungültig");
                 continue;
             }
 
-            double chance = section.getDouble(key + ".chance", 0);
-            int minAmount = section.getInt(key + ".min-amount", 1);
-            int maxAmount = section.getInt(key + ".max-amount", 1);
+            if (chance <= 0 || chance > 100) {
+                warn(path + "." + key + ": Ungültige Chance " + chance + "%");
+                continue;
+            }
 
-            if (!validateDropEntry(chance, minAmount, maxAmount, path + "." + key)) {
+            if (minAmount < 0 || maxAmount < minAmount) {
+                warn(path + "." + key + ": Ungültige Mengen (min=" + minAmount + ", max=" + maxAmount + ")");
                 continue;
             }
 
@@ -117,34 +107,24 @@ public abstract class BaseManager {
         return drops;
     }
 
-    /**
-     * Validiert Drop-Eintrag
-     */
-    private boolean validateDropEntry(double chance, int minAmount, int maxAmount, String path) {
-        if (chance <= 0 || chance > 100) {
-            warn(path + ": Ungültige Chance " + chance + "%");
-            return false;
-        }
+    // ==================== LOGGING ====================
 
-        if (minAmount < 1) {
-            warn(path + ": min-amount muss mindestens 1 sein (ist " + minAmount + ")");
-            return false;
-        }
-
-        if (maxAmount < minAmount) {
-            warn(path + ": max-amount (" + maxAmount + ") < min-amount (" + minAmount + ")");
-            return false;
-        }
-
-        return true;
+    protected void info(String message) {
+        plugin.getLogger().info(message);
     }
 
-    /**
-     * Setzt Debug-Mode
-     */
-    public void setDebugMode(boolean enabled) {
-        this.debugMode = enabled;
-        info(getClass().getSimpleName() + " Debug-Mode: " + (enabled ? "AN" : "AUS"));
+    protected void warn(String message) {
+        plugin.getLogger().warning(message);
+    }
+
+    protected void debug(String message) {
+        if (debugMode) {
+            plugin.getLogger().info("[DEBUG] " + message);
+        }
+    }
+
+    public void setDebugMode(boolean debugMode) {
+        this.debugMode = debugMode;
     }
 
     /**
@@ -153,7 +133,7 @@ public abstract class BaseManager {
     public abstract void reload();
 
     /**
-     * Drop-Eintrag Datenklasse
+     * Drop-Entry Datenklasse
      */
     protected static class DropEntry {
         final String oraxenItemId;

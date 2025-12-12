@@ -1,6 +1,7 @@
 package de.questplugin.managers;
 
 import de.questplugin.OraxenQuestPlugin;
+import de.questplugin.utils.MobHelper;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.entity.EntityType;
 import org.bukkit.inventory.ItemStack;
@@ -10,7 +11,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
- * Verwaltet Mob-Drops
+ * Verwaltet Mob-Drops mit MobHelper für case-insensitive Mob-Namen
  */
 public class MobDropManager extends BaseManager {
 
@@ -33,22 +34,34 @@ public class MobDropManager extends BaseManager {
         int invalidMobs = 0;
 
         for (String mobType : section.getKeys(false)) {
-            try {
-                EntityType entityType = EntityType.valueOf(mobType.toUpperCase());
-                List<DropEntry> drops = loadDropEntries(
-                        section.getConfigurationSection(mobType),
-                        "mob-drops." + mobType
-                );
+            // CASE-INSENSITIVE mit MobHelper
+            EntityType entityType = MobHelper.parseConfigMob(mobType);
 
-                if (!drops.isEmpty()) {
-                    mobDrops.put(entityType, drops);
-                    totalDrops += drops.size();
-
-                    debug("Mob-Drops: " + entityType + " → " + drops.size() + " Items");
-                }
-            } catch (IllegalArgumentException e) {
-                warn("Ungültiger Mob-Typ: " + mobType);
+            if (entityType == null) {
+                warn("Ungültiger Mob-Typ in mob-drops: '" + mobType + "'");
+                warn("  Nutze /quest mobs für gültige Mob-Namen");
+                warn("  Beispiel: ZOMBIE, zombie, Zombie (alle funktionieren)");
                 invalidMobs++;
+                continue;
+            }
+
+            List<DropEntry> drops = loadDropEntries(
+                    section.getConfigurationSection(mobType),
+                    "mob-drops." + mobType
+            );
+
+            if (!drops.isEmpty()) {
+                mobDrops.put(entityType, drops);
+                totalDrops += drops.size();
+
+                debug("Mob-Drops: " + entityType + " → " + drops.size() + " Items");
+                debug("  Geladen von Config-Key: '" + mobType + "'");
+
+                // Zeige deutschen Namen wenn verfügbar
+                String germanName = MobHelper.getGermanName(entityType);
+                if (!germanName.equals(entityType.name())) {
+                    debug("  Deutscher Name: " + germanName);
+                }
             }
         }
 

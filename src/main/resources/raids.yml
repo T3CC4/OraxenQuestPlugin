@@ -1,0 +1,440 @@
+# ====================================
+# RAIDS CONFIGURATION
+# Mit MobHelper: Case-insensitive Mobs!
+# ====================================
+# Beispiele:
+#   - ZOMBIE = zombie = Zombie
+#   - WITHER_SKELETON = wither_skeleton
+#   - PIGLIN_BRUTE = piglin_brute
+#
+# Nutze /quest mobs für alle verfügbaren Mobs!
+# ====================================
+
+raids:
+  # ==================== WALD INVASION ====================
+  forest_invasion:
+    display-name: "&2Wald-Invasion"
+
+    # Biome (case-insensitive)
+    allowed-biomes:
+      - FOREST
+      - BIRCH_FOREST
+      - DARK_FOREST
+
+    preparation-time: 15
+    difficulty-multiplier: 1.0
+    spawn-radius: 20
+
+    waves:
+      wave1:
+        name: "&aErste Welle - Zombies"
+        delay-after: 5
+        mobs:
+          zombie:
+            type: zombie  # Kleinschreibung funktioniert!
+            amount: 8
+            health: 30.0
+            damage: 3.0
+            custom-name: "&2Wald-Zombie"
+            use-equipment: true  # Equipment aus config.yml
+
+          spider:
+            type: SPIDER  # Großschreibung auch!
+            amount: 5
+            health: 25.0
+            damage: 2.5
+            custom-name: "&2Gift-Spinne"
+            use-equipment: false
+
+      wave2:
+        name: "&eZweite Welle - Skelette"
+        delay-after: 10
+        mobs:
+          skeleton:
+            type: Skeleton  # Gemischte Schreibweise!
+            amount: 6
+            health: 25.0
+            damage: 4.0
+            custom-name: "&2Wald-Skelett"
+            use-equipment: true
+
+          creeper:
+            type: CREEPER
+            amount: 4
+            health: 30.0
+            damage: 5.0
+            custom-name: "&2Explosiver Wächter"
+            use-equipment: false
+
+      wave3:
+        name: "&cDritte Welle - Boss"
+        delay-after: 0
+        mobs:
+          giant_zombie:
+            type: zombie
+            amount: 1
+            health: 200.0
+            damage: 10.0
+            custom-name: "&c&lWald-Tyrann"
+            use-equipment: true
+
+          minion_zombies:
+            type: ZOMBIE
+            amount: 10
+            health: 40.0
+            damage: 4.0
+            custom-name: "&7Diener"
+            use-equipment: true
+
+    rewards:
+      oraxen-items:
+        - "forest_token"
+        - "enchanted_wood"
+      money: 500.0
+      experience: 250
+      commands:
+        - "give %player% diamond 5"
+
+  # ==================== WÜSTEN BELAGERUNG ====================
+  desert_siege:
+    display-name: "&6Wüsten-Belagerung"
+
+    allowed-biomes:
+      - desert
+      - badlands
+
+    preparation-time: 20
+    difficulty-multiplier: 1.2
+    spawn-radius: 25
+
+    waves:
+      wave1:
+        name: "&eWelle 1 - Husk-Horde"
+        delay-after: 8
+        mobs:
+          husk:
+            type: HUSK  # Wüsten-Zombie
+            amount: 12
+            health: 35.0
+            damage: 4.0
+            custom-name: "&6Wüsten-Wanderer"
+            use-equipment: true
+
+      wave2:
+        name: "&eWelle 2 - Stray-Angriff"
+        delay-after: 8
+        mobs:
+          stray:
+            type: stray  # Eis-Skelett (spawnt trotzdem in Wüste)
+            amount: 8
+            health: 30.0
+            damage: 5.0
+            custom-name: "&bFrostiger Bogenschütze"
+            use-equipment: true
+
+          spider:
+            type: spider
+            amount: 6
+            health: 28.0
+            damage: 3.0
+            custom-name: "&6Wüsten-Spinne"
+            use-equipment: false
+
+      wave3:
+        name: "&cWelle 3 - Enderman-Invasion"
+        delay-after: 0
+        mobs:
+          enderman:
+            type: ENDERMAN
+            amount: 5
+            health: 80.0
+            damage: 8.0
+            custom-name: "&5Teleporter"
+            use-equipment: false
+
+    rewards:
+      oraxen-items:
+        - "desert_relic"
+        - "sand_crystal"
+      money: 750.0
+      experience: 400
+
+  # ==================== NETHER APOKALYPSE ====================
+  nether_apocalypse:
+    display-name: "&4&lNether-Apokalypse"
+
+    # Alle Nether-Biome
+    allowed-biomes:
+      - NETHER_WASTES
+      - crimson_forest
+      - Warped_Forest
+      - soul_sand_valley
+      - basalt_deltas
+
+    preparation-time: 30
+    difficulty-multiplier: 1.5
+    spawn-radius: 30
+
+    waves:
+      wave1:
+        name: "&cWelle 1 - Piglin-Armee"
+        delay-after: 10
+        mobs:
+          piglin:
+            type: PIGLIN
+            amount: 10
+            health: 40.0
+            damage: 5.0
+            custom-name: "&6Piglin-Krieger"
+            use-equipment: true
+
+          piglin_brute:
+            type: piglin_brute  # Elite-Piglin
+            amount: 3
+            health: 80.0
+            damage: 10.0
+            custom-name: "&c&lPiglin-Brutalo"
+            use-equipment: true
+
+      wave2:
+        name: "&cWelle 2 - Höllenhunde"
+        delay-after: 10
+        mobs:
+          blaze:
+            type: Blaze
+            amount: 6
+            health: 50.0
+            damage: 8.0
+            custom-name: "&6Flammen-Wächter"
+            use-equipment: false
+
+          wither_skeleton:
+            type: WITHER_SKELETON
+            amount: 5
+            health: 60.0
+            damage: 9.0
+            custom-name: "&8Wither-Krieger"
+            use-equipment: true
+
+      wave3:
+        name: "&4Welle 3 - Ghast-Schwarm"
+        delay-after: 15
+        mobs:
+          ghast:
+            type: ghast
+            amount: 4
+            health: 100.0
+            damage: 12.0
+            custom-name: "&fGeist der Hölle"
+            use-equipment: false
+
+      wave4:
+        name: "&4&lFINALE - Wither-Beschwörung"
+        delay-after: 0
+        mobs:
+          wither_skeleton_boss:
+            type: wither_skeleton
+            amount: 1
+            health: 500.0
+            damage: 20.0
+            custom-name: "&4&lNether-Tyrann"
+            use-equipment: true
+
+          support:
+            type: PIGLIN_BRUTE
+            amount: 4
+            health: 100.0
+            damage: 12.0
+            custom-name: "&cElite-Wächter"
+            use-equipment: true
+
+    rewards:
+      oraxen-items:
+        - "nether_crown"
+        - "hellfire_essence"
+        - "soul_crystal"
+      money: 2000.0
+      experience: 1000
+      commands:
+        - "give %player% netherite_ingot 3"
+
+  # ==================== UNTOTEN HORDE ====================
+  undead_horde:
+    display-name: "&8&lUntoten-Horde"
+
+    # Alle Biome erlaubt
+    allowed-biomes:
+      - "*"
+
+    preparation-time: 25
+    difficulty-multiplier: 1.3
+    spawn-radius: 25
+
+    waves:
+      wave1:
+        name: "&7Welle 1 - Zombie-Schwarm"
+        delay-after: 5
+        mobs:
+          zombie:
+            type: ZOMBIE
+            amount: 20
+            health: 25.0
+            damage: 3.0
+            custom-name: "&7Zombie"
+            use-equipment: true
+
+          drowned:
+            type: drowned
+            amount: 5
+            health: 30.0
+            damage: 4.0
+            custom-name: "&9Ertrunkener"
+            use-equipment: true
+
+      wave2:
+        name: "&7Welle 2 - Skelett-Legion"
+        delay-after: 8
+        mobs:
+          skeleton:
+            type: skeleton
+            amount: 15
+            health: 28.0
+            damage: 5.0
+            custom-name: "&7Skelett-Krieger"
+            use-equipment: true
+
+      wave3:
+        name: "&4Welle 3 - Zombie-Dorfbewohner"
+        delay-after: 10
+        mobs:
+          zombie_villager:
+            type: ZOMBIE_VILLAGER
+            amount: 10
+            health: 35.0
+            damage: 4.5
+            custom-name: "&aInfizierter Dorfbewohner"
+            use-equipment: true
+
+      wave4:
+        name: "&4&lBOSS - Nekromant"
+        delay-after: 0
+        mobs:
+          necromancer:
+            type: wither_skeleton
+            amount: 1
+            health: 400.0
+            damage: 15.0
+            custom-name: "&5&lNekromant"
+            use-equipment: true
+
+          summons:
+            type: ZOMBIE
+            amount: 15
+            health: 30.0
+            damage: 4.0
+            custom-name: "&8Beschwörung"
+            use-equipment: true
+
+    rewards:
+      oraxen-items:
+        - "necromancer_staff"
+        - "soul_gem"
+        - "undead_essence"
+      money: 1500.0
+      experience: 750
+      commands:
+        - "give %player% minecraft:totem_of_undying 1"
+
+  # ==================== ILLAGER ÜBERFALL ====================
+  illager_raid:
+    display-name: "&c&lIllager-Überfall"
+
+    allowed-biomes:
+      - plains
+      - forest
+      - TAIGA
+
+    preparation-time: 20
+    difficulty-multiplier: 1.4
+    spawn-radius: 22
+
+    waves:
+      wave1:
+        name: "&7Welle 1 - Plünderer"
+        delay-after: 8
+        mobs:
+          pillager:
+            type: PILLAGER
+            amount: 10
+            health: 40.0
+            damage: 6.0
+            custom-name: "&7Plünderer"
+            use-equipment: true
+
+      wave2:
+        name: "&eWelle 2 - Diener"
+        delay-after: 8
+        mobs:
+          vindicator:
+            type: vindicator
+            amount: 6
+            health: 50.0
+            damage: 10.0
+            custom-name: "&cDiener"
+            use-equipment: true
+
+          pillager:
+            type: pillager
+            amount: 8
+            health: 40.0
+            damage: 6.0
+            custom-name: "&7Plünderer"
+            use-equipment: true
+
+      wave3:
+        name: "&5Welle 3 - Magier"
+        delay-after: 10
+        mobs:
+          evoker:
+            type: EVOKER
+            amount: 3
+            health: 80.0
+            damage: 12.0
+            custom-name: "&5Magier"
+            use-equipment: false
+
+          vex:
+            type: vex
+            amount: 9
+            health: 30.0
+            damage: 6.0
+            custom-name: "&7Vex"
+            use-equipment: false
+
+      wave4:
+        name: "&4&lBOSS - Illager-Kommandant"
+        delay-after: 0
+        mobs:
+          boss:
+            type: ravager
+            amount: 1
+            health: 300.0
+            damage: 20.0
+            custom-name: "&4&lIllager-Bestie"
+            use-equipment: false
+
+          rider:
+            type: VINDICATOR
+            amount: 2
+            health: 100.0
+            damage: 15.0
+            custom-name: "&cElite-Diener"
+            use-equipment: true
+
+    rewards:
+      oraxen-items:
+        - "illager_banner"
+        - "enchanted_crossbow"
+        - "totem_shard"
+      money: 1800.0
+      experience: 900

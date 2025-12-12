@@ -2,11 +2,14 @@ package de.questplugin;
 
 import de.questplugin.utils.AEAPIHelper;
 import de.questplugin.utils.PluginLogger;
+import net.milkbowl.vault.economy.Economy;
 import org.bukkit.Bukkit;
+import org.bukkit.plugin.RegisteredServiceProvider;
 import org.bukkit.plugin.java.JavaPlugin;
 import de.questplugin.listeners.*;
 import de.questplugin.managers.*;
 import de.questplugin.commands.QuestCommand;
+import de.questplugin.commands.RaidCommand;
 
 public class OraxenQuestPlugin extends JavaPlugin {
 
@@ -20,6 +23,7 @@ public class OraxenQuestPlugin extends JavaPlugin {
     private ChestManager chestManager;
     private CraftingManager craftingManager;
     private MobEquipmentManager mobEquipmentManager;
+    private RaidManager raidManager;
 
     // Listener (für Cleanup)
     private BlockBreakListener blockBreakListener;
@@ -27,12 +31,21 @@ public class OraxenQuestPlugin extends JavaPlugin {
     // Zentraler Logger mit debug-mode Support
     private PluginLogger pluginLogger;
 
+    private Economy economy = null;
+
     @Override
     public void onEnable() {
         instance = this;
 
         // Logger initialisieren (als erstes!)
         pluginLogger = new PluginLogger(this);
+
+        if (!setupEconomy()) {
+            getLogger().warning("Vault Economy nicht gefunden!");
+            getLogger().warning("Geld-Belohnungen werden nicht funktionieren!");
+        } else {
+            getLogger().info("Vault Economy erfolgreich verbunden!");
+        }
 
         // Oraxen Check
         if (Bukkit.getPluginManager().getPlugin("Oraxen") == null) {
@@ -59,6 +72,7 @@ public class OraxenQuestPlugin extends JavaPlugin {
         craftingManager = new CraftingManager(this);
         mobEquipmentManager = new MobEquipmentManager(this);
         questManager = new QuestManager(this);
+        raidManager = new RaidManager(this);
 
         // Listener registrieren
         blockBreakListener = new BlockBreakListener(this);
@@ -69,12 +83,15 @@ public class OraxenQuestPlugin extends JavaPlugin {
         Bukkit.getPluginManager().registerEvents(new NPCInteractListener(this), this);
         Bukkit.getPluginManager().registerEvents(new TradeCompleteListener(this), this);
         Bukkit.getPluginManager().registerEvents(new AnvilListener(this), this);
-        Bukkit.getPluginManager().registerEvents(new SmithingListener(this), this);
 
         // Commands
         QuestCommand questCommand = new QuestCommand(this);
         getCommand("quest").setExecutor(questCommand);
         getCommand("quest").setTabCompleter(questCommand);
+
+        RaidCommand raidCommand = new RaidCommand(this);
+        getCommand("raid").setExecutor(raidCommand);
+        getCommand("raid").setTabCompleter(raidCommand);
 
         // Quest Timer
         questManager.startQuestTimer();
@@ -89,6 +106,11 @@ public class OraxenQuestPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        // Stoppe Raids
+        if (raidManager != null) {
+            raidManager.shutdown();
+        }
+
         // Stoppe alle Tasks
         if (questManager != null) {
             questManager.shutdown();
@@ -109,6 +131,22 @@ public class OraxenQuestPlugin extends JavaPlugin {
         }
 
         pluginLogger.info("OraxenQuestPlugin deaktiviert!");
+    }
+
+    private boolean setupEconomy() {
+        if (getServer().getPluginManager().getPlugin("Vault") == null) {
+            return false;
+        }
+
+        RegisteredServiceProvider<Economy> rsp =
+                getServer().getServicesManager().getRegistration(Economy.class);
+
+        if (rsp == null) {
+            return false;
+        }
+
+        economy = rsp.getProvider();
+        return economy != null;
     }
 
     // ==================== GETTER ====================
@@ -143,6 +181,24 @@ public class OraxenQuestPlugin extends JavaPlugin {
 
     public MobEquipmentManager getMobEquipmentManager() {
         return mobEquipmentManager;
+    }
+
+    public RaidManager getRaidManager() {
+        return raidManager;
+    }
+
+    /**
+     * Holt Vault Economy (kann null sein!)
+     */
+    public Economy getEconomy() {
+        return economy;
+    }
+
+    /**
+     * Prüft ob Vault Economy verfügbar ist
+     */
+    public boolean hasEconomy() {
+        return economy != null;
     }
 
     /**

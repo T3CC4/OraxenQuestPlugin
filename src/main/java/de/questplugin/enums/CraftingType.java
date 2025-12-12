@@ -1,11 +1,12 @@
 package de.questplugin.enums;
 
 /**
- * Alle verfügbaren Crafting-Typen
+ * ENTFERNT - Nicht mehr benötigt
+ * Anvil ist jetzt direkt in CraftingManager integriert
  */
+@Deprecated
 public enum CraftingType {
-    ANVIL("Amboss"),
-    SMITHING_TABLE("Schmiedetisch");
+    ANVIL("Amboss");
 
     private final String displayName;
 

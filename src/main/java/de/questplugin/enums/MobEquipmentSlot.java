@@ -1,28 +1,21 @@
 package de.questplugin.enums;
 
-import org.bukkit.inventory.EquipmentSlot;
-
 /**
- * Alle verfügbaren Equipment-Slots für Mob-Equipment
+ * Equipment-Slots für Mobs
  */
 public enum MobEquipmentSlot {
-    MAIN_HAND(EquipmentSlot.HAND, "Haupthand"),
-    OFF_HAND(EquipmentSlot.OFF_HAND, "Nebenhand"),
-    HELMET(EquipmentSlot.HEAD, "Helm"),
-    CHESTPLATE(EquipmentSlot.CHEST, "Brustpanzer"),
-    LEGGINGS(EquipmentSlot.LEGS, "Hose"),
-    BOOTS(EquipmentSlot.FEET, "Stiefel");
 
-    private final EquipmentSlot bukkitSlot;
+    MAIN_HAND("Haupthand"),
+    OFF_HAND("Nebenhand"),
+    HELMET("Helm"),
+    CHESTPLATE("Brustpanzer"),
+    LEGGINGS("Hose"),
+    BOOTS("Stiefel");
+
     private final String displayName;
 
-    MobEquipmentSlot(EquipmentSlot bukkitSlot, String displayName) {
-        this.bukkitSlot = bukkitSlot;
+    MobEquipmentSlot(String displayName) {
         this.displayName = displayName;
-    }
-
-    public EquipmentSlot getBukkitSlot() {
-        return bukkitSlot;
     }
 
     public String getDisplayName() {
@@ -30,15 +23,70 @@ public enum MobEquipmentSlot {
     }
 
     /**
-     * Konvertiert String zu Enum (case-insensitive)
+     * Parse aus String (case-insensitive)
      */
-    public static MobEquipmentSlot fromString(String name) {
-        if (name == null) return null;
-
-        try {
-            return valueOf(name.toUpperCase());
-        } catch (IllegalArgumentException e) {
+    public static MobEquipmentSlot fromString(String input) {
+        if (input == null || input.isEmpty()) {
             return null;
         }
+
+        String normalized = input.toUpperCase().trim();
+
+        // Direkte Matches
+        try {
+            return valueOf(normalized);
+        } catch (IllegalArgumentException e) {
+            // Nicht gefunden, versuche Aliases
+        }
+
+        // Aliases
+        switch (normalized) {
+            case "HAND":
+            case "MAINHAND":
+            case "MAIN":
+                return MAIN_HAND;
+
+            case "OFFHAND":
+            case "OFF":
+            case "SECOND_HAND":
+                return OFF_HAND;
+
+            case "HEAD":
+            case "HAT":
+                return HELMET;
+
+            case "CHEST":
+            case "BODY":
+            case "CHESTPLATE":
+                return CHESTPLATE;
+
+            case "LEGS":
+            case "PANTS":
+            case "LEGGING":
+                return LEGGINGS;
+
+            case "FEET":
+            case "BOOT":
+            case "SHOES":
+                return BOOTS;
+
+            default:
+                return null;
+        }
+    }
+
+    /**
+     * Prüft ob der Slot eine Rüstung ist
+     */
+    public boolean isArmor() {
+        return this == HELMET || this == CHESTPLATE ||
+                this == LEGGINGS || this == BOOTS;
+    }
+
+    /**
+     * Prüft ob der Slot eine Waffe/Werkzeug sein kann
+     */
+    public boolean isWeapon() {
+        return this == MAIN_HAND || this == OFF_HAND;
     }
 }

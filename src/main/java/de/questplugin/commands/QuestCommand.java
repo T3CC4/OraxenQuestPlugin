@@ -2,6 +2,8 @@ package de.questplugin.commands;
 
 import de.questplugin.OraxenQuestPlugin;
 import de.questplugin.managers.QuestManager;
+import de.questplugin.utils.BiomeHelper;
+import de.questplugin.utils.MobHelper;
 import de.questplugin.utils.StructureHelper;
 import org.bukkit.ChatColor;
 import org.bukkit.command.Command;
@@ -49,6 +51,12 @@ public class QuestCommand implements CommandExecutor, TabCompleter {
             case "structures":
                 return handleStructures(sender);
 
+            case "biomes":
+                return handleBiomes(sender);
+
+            case "mobs":
+                return handleMobs(sender);
+
             case "debug":
                 return handleDebug(sender, args);
 
@@ -69,6 +77,10 @@ public class QuestCommand implements CommandExecutor, TabCompleter {
                 ChatColor.GRAY + " - Quest-NPC spawnen");
         sender.sendMessage(ChatColor.YELLOW + "/quest structures" +
                 ChatColor.GRAY + " - Alle Strukturen");
+        sender.sendMessage(ChatColor.YELLOW + "/quest biomes" +
+                ChatColor.GRAY + " - Alle Biome");
+        sender.sendMessage(ChatColor.YELLOW + "/quest mobs" +
+                ChatColor.GRAY + " - Alle Mobs");
         sender.sendMessage(ChatColor.YELLOW + "/quest debug <on|off>" +
                 ChatColor.GRAY + " - Debug-Mode");
         sender.sendMessage(ChatColor.GOLD + "━━━━━━━━━━━━━━━━━━━━━━━");
@@ -128,6 +140,7 @@ public class QuestCommand implements CommandExecutor, TabCompleter {
             plugin.getCraftingManager().reload();
             plugin.getMobEquipmentManager().reload();
             plugin.getQuestManager().reload();
+            plugin.getRaidManager().reload();
 
             sender.sendMessage(PREFIX + ChatColor.GREEN + "✓ Config neu geladen!");
         } catch (Exception e) {
@@ -195,6 +208,36 @@ public class QuestCommand implements CommandExecutor, TabCompleter {
         return true;
     }
 
+    private boolean handleBiomes(CommandSender sender) {
+        sender.sendMessage("");
+        sender.sendMessage(BiomeHelper.getFormattedBiomeList());
+        sender.sendMessage("");
+        sender.sendMessage(ChatColor.GRAY + "Nutze diese Namen in raids.yml");
+        sender.sendMessage(ChatColor.GRAY + "Beispiel: " +
+                ChatColor.WHITE + "allowed-biomes: [PLAINS, FOREST]");
+        sender.sendMessage(ChatColor.GRAY + "Case-insensitive: " +
+                ChatColor.WHITE + "plains" + ChatColor.GRAY + " = " +
+                ChatColor.WHITE + "PLAINS");
+        sender.sendMessage(ChatColor.GRAY + "Alle Biome: " +
+                ChatColor.WHITE + "allowed-biomes: [\"*\"]");
+        return true;
+    }
+
+    private boolean handleMobs(CommandSender sender) {
+        sender.sendMessage("");
+        sender.sendMessage(MobHelper.getFormattedMobList());
+        sender.sendMessage("");
+        sender.sendMessage(ChatColor.GRAY + "Nutze diese Namen in:");
+        sender.sendMessage(ChatColor.GRAY + "  - raids.yml (Wellen)");
+        sender.sendMessage(ChatColor.GRAY + "  - config.yml (mob-drops, mob-equipment)");
+        sender.sendMessage(ChatColor.GRAY + "Beispiel: " +
+                ChatColor.WHITE + "type: ZOMBIE");
+        sender.sendMessage(ChatColor.GRAY + "Case-insensitive: " +
+                ChatColor.WHITE + "zombie" + ChatColor.GRAY + " = " +
+                ChatColor.WHITE + "ZOMBIE");
+        return true;
+    }
+
     private boolean handleDebug(CommandSender sender, String[] args) {
         if (!checkPermission(sender, "debug")) {
             return true;
@@ -237,7 +280,8 @@ public class QuestCommand implements CommandExecutor, TabCompleter {
     public List<String> onTabComplete(CommandSender sender, Command command,
                                       String alias, String[] args) {
         if (args.length == 1) {
-            return Arrays.asList("info", "reload", "spawnnpc", "structures", "debug")
+            return Arrays.asList("info", "reload", "spawnnpc", "structures",
+                            "biomes", "mobs", "debug")
                     .stream()
                     .filter(s -> s.startsWith(args[0].toLowerCase()))
                     .collect(Collectors.toList());

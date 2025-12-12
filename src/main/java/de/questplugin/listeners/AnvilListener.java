@@ -12,7 +12,7 @@ import org.bukkit.inventory.AnvilInventory;
 import org.bukkit.inventory.ItemStack;
 
 /**
- * Listener für Custom Anvil-Rezepte
+ * Listener für Custom Anvil-Rezepte mit zwei Input-Slots
  */
 public class AnvilListener implements Listener {
 
@@ -32,19 +32,23 @@ public class AnvilListener implements Listener {
         Player player = (Player) event.getWhoClicked();
         AnvilInventory anvil = (AnvilInventory) event.getInventory();
 
-        // Hole Items
-        ItemStack input = anvil.getItem(0);
+        // Hole Items (Slot 0 = links, Slot 1 = rechts)
+        ItemStack firstInput = anvil.getItem(0);
+        ItemStack secondInput = anvil.getItem(1);
         ItemStack result = anvil.getItem(2);
 
-        if (input == null || result == null) return;
+        if (firstInput == null || result == null) return;
 
         plugin.getPluginLogger().debug("=== Anvil Click ===");
         plugin.getPluginLogger().debug("Player: " + player.getName());
-        plugin.getPluginLogger().debug("Input: " + input.getType());
+        plugin.getPluginLogger().debug("First Input: " + firstInput.getType());
+        if (secondInput != null) {
+            plugin.getPluginLogger().debug("Second Input: " + secondInput.getType());
+        }
 
-        // Suche Rezept
+        // Suche Rezept (mit beiden Items)
         CraftingManager.CraftingRecipe recipe = plugin.getCraftingManager()
-                .findAnvilRecipe(input);
+                .findAnvilRecipe(firstInput, secondInput);
 
         if (recipe == null) {
             plugin.getPluginLogger().debug("Kein Rezept gefunden");

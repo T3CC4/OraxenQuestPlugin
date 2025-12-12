@@ -2,6 +2,7 @@ package de.questplugin.managers;
 
 import de.questplugin.OraxenQuestPlugin;
 import de.questplugin.enums.MobEquipmentSlot;
+import de.questplugin.utils.MobHelper;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.entity.EntityType;
 import org.bukkit.inventory.ItemStack;
@@ -10,7 +11,7 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Verwaltet Mob-Equipment (Rüstung, Waffen)
+ * Verwaltet Mob-Equipment mit MobHelper für case-insensitive Mob-Namen
  */
 public class MobEquipmentManager extends BaseManager {
 
@@ -34,26 +35,39 @@ public class MobEquipmentManager extends BaseManager {
         int invalidMobs = 0;
 
         for (String mobType : section.getKeys(false)) {
-            try {
-                EntityType entityType = EntityType.valueOf(mobType.toUpperCase());
-                List<EquipmentEntry> equipment = loadEquipmentEntries(
-                        section.getConfigurationSection(mobType),
-                        "mob-equipment." + mobType
-                );
+            // CASE-INSENSITIVE mit MobHelper
+            EntityType entityType = MobHelper.parseConfigMob(mobType);
 
-                if (!equipment.isEmpty()) {
-                    mobEquipment.put(entityType, equipment);
-                    totalEquipment += equipment.size();
-
-                    debug("Mob-Equipment: " + entityType + " → " + equipment.size() + " Items");
-                    for (EquipmentEntry entry : equipment) {
-                        debug("  - " + entry.slot.getDisplayName() + ": " +
-                                entry.oraxenItemId + " (" + entry.chance + "%)");
-                    }
-                }
-            } catch (IllegalArgumentException e) {
-                warn("Ungültiger Mob-Typ: " + mobType);
+            if (entityType == null) {
+                warn("Ungültiger Mob-Typ in mob-equipment: '" + mobType + "'");
+                warn("  Nutze /quest mobs für gültige Mob-Namen");
+                warn("  Beispiel: ZOMBIE, zombie, Zombie (alle funktionieren)");
                 invalidMobs++;
+                continue;
+            }
+
+            List<EquipmentEntry> equipment = loadEquipmentEntries(
+                    section.getConfigurationSection(mobType),
+                    "mob-equipment." + mobType
+            );
+
+            if (!equipment.isEmpty()) {
+                mobEquipment.put(entityType, equipment);
+                totalEquipment += equipment.size();
+
+                debug("Mob-Equipment: " + entityType + " → " + equipment.size() + " Items");
+                debug("  Geladen von Config-Key: '" + mobType + "'");
+
+                // Zeige deutschen Namen wenn verfügbar
+                String germanName = MobHelper.getGermanName(entityType);
+                if (!germanName.equals(entityType.name())) {
+                    debug("  Deutscher Name: " + germanName);
+                }
+
+                for (EquipmentEntry entry : equipment) {
+                    debug("  - " + entry.slot.getDisplayName() + ": " +
+                            entry.oraxenItemId + " (" + entry.chance + "%)");
+                }
             }
         }
 

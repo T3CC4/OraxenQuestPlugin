@@ -1,79 +1,96 @@
 # ==================== ANVIL REZEPTE ====================
 # Format:
 #   rezept_name:
-#     input: oraxen_item_id           # Item das reingelegt wird
-#     output: oraxen_item_id          # Item das rauskommt
-#     output-amount: 1                # Anzahl des Outputs (optional, default: 1)
-#     exp-cost: 5                     # XP-Kosten (optional, default: 0)
+#     first-input: oraxen_item_id      # Item im linken Slot (Slot 0)
+#     second-input: oraxen_item_id     # Item im rechten Slot (Slot 1, OPTIONAL)
+#     output: oraxen_item_id           # Item das rauskommt
+#     output-amount: 1                 # Anzahl des Outputs (optional, default: 1)
+#     exp-cost: 5                      # XP-Kosten (optional, default: 0)
 #
-# Beispiel: Reparatur, Upgrade, Kombination
+# WICHTIG:
+# - Wenn second-input fehlt, funktioniert das Rezept nur mit einem Item
+# - Beide Slots müssen gefüllt sein, wenn second-input konfiguriert ist
+#
+# Beispiele:
+# 1) Reparatur (1 Item): damaged_sword → repaired_sword
+# 2) Upgrade (2 Items): iron_ingot + upgrade_token → steel_ingot
+# 3) Kombination (2 Items): gem_shard + gem_shard → complete_gem
+
 anvil-recipes:
+  # ========== REPARATUR (1 Item) ==========
   repair_mythril_sword:
-    input: "damaged_mythril_sword"
+    first-input: "damaged_mythril_sword"
     output: "mythril_sword"
     output-amount: 1
     exp-cost: 10
 
+  repair_dragon_armor:
+    first-input: "damaged_dragon_chestplate"
+    output: "dragon_chestplate"
+    output-amount: 1
+    exp-cost: 20
+
+  # ========== UPGRADES (2 Items) ==========
   upgrade_iron_to_steel:
-    input: "iron_ingot"
+    first-input: "iron_ingot"
+    second-input: "upgrade_token"
     output: "steel_ingot"
     output-amount: 1
     exp-cost: 5
 
-  compress_gems:
-    input: "ruby_shard"
-    output: "ruby"
-    output-amount: 1
-    exp-cost: 3
-
-  forge_legendary_blade:
-    input: "dragon_scale"
-    output: "legendary_sword"
-    output-amount: 1
-    exp-cost: 30
-
-# ==================== SMITHING TABLE REZEPTE ====================
-# Format:
-#   rezept_name:
-#     input: oraxen_item_id           # Basis-Item (linker Slot)
-#     second-input: oraxen_item_id    # Upgrade-Material (rechter Slot, optional)
-#     output: oraxen_item_id          # Ergebnis
-#     output-amount: 1                # Anzahl des Outputs (optional, default: 1)
-#     exp-cost: 5                     # XP-Kosten (optional, default: 0)
-#
-# Beispiel: Rüstungs-Upgrades, Waffen-Verbesserungen
-smithing-recipes:
   netherite_upgrade:
-    input: "diamond_sword"
+    first-input: "diamond_sword"
     second-input: "netherite_ingot"
     output: "netherite_sword"
     output-amount: 1
     exp-cost: 15
 
   enchant_blade:
-    input: "steel_sword"
+    first-input: "steel_sword"
     second-input: "magic_crystal"
     output: "enchanted_steel_sword"
     output-amount: 1
     exp-cost: 20
 
-  mythril_armor_upgrade:
-    input: "iron_chestplate"
-    second-input: "mythril_bar"
-    output: "mythril_chestplate"
+  # ========== KOMBINATION (2 Items) ==========
+  compress_gems:
+    first-input: "ruby_shard"
+    second-input: "ruby_shard"
+    output: "ruby"
+    output-amount: 1
+    exp-cost: 3
+
+  fuse_crystals:
+    first-input: "fire_crystal"
+    second-input: "ice_crystal"
+    output: "elemental_crystal"
     output-amount: 1
     exp-cost: 25
 
-  imbue_tool:
-    input: "iron_pickaxe"
-    second-input: "fire_essence"
-    output: "flame_pickaxe"
+  # ========== SPEZIAL-CRAFTING (2 Items) ==========
+  forge_legendary_blade:
+    first-input: "dragon_scale"
+    second-input: "mythril_bar"
+    output: "legendary_sword"
     output-amount: 1
-    exp-cost: 10
+    exp-cost: 30
 
-  # Rezept OHNE zweites Item (nur Basis-Transformation)
-  simple_upgrade:
-    input: "basic_gem"
-    output: "polished_gem"
+  create_philosophers_stone:
+    first-input: "gold_ingot"
+    second-input: "ancient_rune"
+    output: "philosophers_stone"
+    output-amount: 1
+    exp-cost: 50
+
+  # ========== EINFACHE TRANSFORMATION (1 Item) ==========
+  polish_gem:
+    first-input: "rough_diamond"
+    output: "polished_diamond"
+    output-amount: 1
+    exp-cost: 8
+
+  smelt_ore:
+    first-input: "raw_mythril"
+    output: "mythril_bar"
     output-amount: 2
     exp-cost: 5
