@@ -11,6 +11,11 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Verwaltet Custom Crafting Rezepte für Anvil
+ *
+ * FIXES:
+ * - Korrektes Matching für 1-Item und 2-Item Rezepte
+ * - Bessere Debug-Ausgaben
+ * - Klare Unterscheidung zwischen "kein second-input" und "second-input vorhanden"
  */
 public class CraftingManager extends BaseManager {
 
@@ -63,6 +68,8 @@ public class CraftingManager extends BaseManager {
                 debug("  First Input: " + recipe.getFirstInput());
                 if (recipe.getSecondInput() != null) {
                     debug("  Second Input: " + recipe.getSecondInput());
+                } else {
+                    debug("  Second Input: NICHT BENÖTIGT");
                 }
                 debug("  Output: " + recipe.getOutputItem() + " x" + recipe.getOutputAmount());
                 debug("  Cost: " + recipe.getExpCost() + " XP");
@@ -74,7 +81,7 @@ public class CraftingManager extends BaseManager {
 
     private CraftingRecipe loadRecipe(String key, ConfigurationSection section) {
         String firstInput = section.getString("first-input");
-        String secondInput = section.getString("second-input");
+        String secondInput = section.getString("second-input"); // null wenn nicht vorhanden
         String outputItem = section.getString("output");
         int outputAmount = section.getInt("output-amount", 1);
         int expCost = section.getInt("exp-cost", 0);
@@ -86,7 +93,7 @@ public class CraftingManager extends BaseManager {
         }
 
         // Second-Input ist optional
-        if (secondInput != null && !validateItem(secondInput)) {
+        if (secondInput != null && !secondInput.isEmpty() && !validateItem(secondInput)) {
             warn("Rezept '" + key + "': Second-Input '" + secondInput + "' ungültig");
             return null;
         }
@@ -101,6 +108,11 @@ public class CraftingManager extends BaseManager {
             return null;
         }
 
+        // Normalisiere secondInput: empty string → null
+        if (secondInput != null && secondInput.trim().isEmpty()) {
+            secondInput = null;
+        }
+
         return new CraftingRecipe(
                 key,
                 firstInput,
@@ -113,7 +125,9 @@ public class CraftingManager extends BaseManager {
 
     /**
      * Findet Rezept für Anvil (zwei Items)
+     * @deprecated Nutze findRecipeByIds() für bessere Anvil-Kompatibilität
      */
+    @Deprecated
     public CraftingRecipe findAnvilRecipe(ItemStack firstInput, ItemStack secondInput) {
         if (firstInput == null) return null;
 
@@ -129,12 +143,26 @@ public class CraftingManager extends BaseManager {
     }
 
     /**
+     * Findet Rezept direkt über Oraxen-IDs (besser für Anvil)
+     * Nutze diese Methode wenn du die IDs bereits hast
+     */
+    public CraftingRecipe findRecipeByIds(String firstInputId, String secondInputId) {
+        return findRecipe(firstInputId, secondInputId);
+    }
+
+    /**
      * Interne Methode zum Finden eines Rezepts
+     *
+     * WICHTIG: Unterscheidet zwischen:
+     * 1) Rezept braucht 1 Item (second-input: null)
+     * 2) Rezept braucht 2 Items (second-input: gesetzt)
      */
     private CraftingRecipe findRecipe(String firstInputId, String secondInputId) {
         if (recipes.isEmpty()) {
             return null;
         }
+
+        debug("Suche Rezept für: first=" + firstInputId + ", second=" + secondInputId);
 
         for (CraftingRecipe recipe : recipes.values()) {
             // Prüfe erstes Item
@@ -142,20 +170,37 @@ public class CraftingManager extends BaseManager {
                 continue;
             }
 
-            // Kein zweites Item konfiguriert = Match
-            if (recipe.getSecondInput() == null && secondInputId == null) {
-                debug("Match gefunden: " + recipe.getKey());
-                return recipe;
+            debug("  Rezept " + recipe.getKey() + ": first match");
+
+            // Fall 1: Rezept hat kein second-input
+            if (recipe.getSecondInput() == null) {
+                // Match nur wenn Spieler auch kein second-input hat
+                if (secondInputId == null) {
+                    debug("  → Match (kein second-input benötigt)");
+                    return recipe;
+                } else {
+                    debug("  → Kein Match (Rezept braucht kein second-input, aber Spieler hat eins)");
+                    continue;
+                }
             }
 
-            // Zweites Item muss matchen
-            if (recipe.getSecondInput() != null && secondInputId != null &&
-                    recipe.getSecondInput().equalsIgnoreCase(secondInputId)) {
-                debug("Match gefunden: " + recipe.getKey());
+            // Fall 2: Rezept hat second-input
+            if (secondInputId == null) {
+                debug("  → Kein Match (Rezept braucht second-input, aber Spieler hat keins)");
+                continue;
+            }
+
+            // Beide Items müssen matchen
+            if (recipe.getSecondInput().equalsIgnoreCase(secondInputId)) {
+                debug("  → Match (beide inputs)");
                 return recipe;
+            } else {
+                debug("  → Kein Match (second-input: erwartet=" +
+                        recipe.getSecondInput() + ", erhalten=" + secondInputId + ")");
             }
         }
 
+        debug("Kein Rezept gefunden");
         return null;
     }
 
@@ -186,7 +231,7 @@ public class CraftingManager extends BaseManager {
     public static class CraftingRecipe {
         private final String key;
         private final String firstInput;
-        private final String secondInput;
+        private final String secondInput; // null = nicht benötigt
         private final String outputItem;
         private final int outputAmount;
         private final int expCost;
@@ -217,6 +262,22 @@ public class CraftingManager extends BaseManager {
                 item.setAmount(outputAmount);
             }
             return item;
+        }
+
+        /**
+         * Prüft ob Rezept 2 Items braucht
+         */
+        public boolean requiresTwoItems() {
+            return secondInput != null;
+        }
+
+        @Override
+        public String toString() {
+            if (secondInput != null) {
+                return key + ": " + firstInput + " + " + secondInput + " → " + outputItem + " x" + outputAmount;
+            } else {
+                return key + ": " + firstInput + " → " + outputItem + " x" + outputAmount;
+            }
         }
     }
 }
