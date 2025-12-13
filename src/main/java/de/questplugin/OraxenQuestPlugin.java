@@ -106,6 +106,11 @@ public class OraxenQuestPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        // FIX: Markiere DataManager dass Plugin disabled wird
+        if (dataManager != null) {
+            dataManager.setDisabling();
+        }
+
         // Stoppe Raids
         if (raidManager != null) {
             raidManager.shutdown();

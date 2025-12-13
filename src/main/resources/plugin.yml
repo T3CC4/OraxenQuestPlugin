@@ -11,6 +11,10 @@ commands:
     description: Quest Verwaltung
     usage: /quest <info|reload|spawnnpc>
     permission: quest.use
+  raid:
+    description: Raid Verwaltung (Console-only)
+    usage: /raid <start|stop|info|list|reload>
+    permission: quest.raid
 
 permissions:
   quest.use:
@@ -21,4 +25,10 @@ permissions:
     default: op
   quest.spawnnpc:
     description: Erlaubt das Spawnen des Quest-NPCs
+    default: op
+  quest.raid:
+    description: Erlaubt die Nutzung des /raid Befehls
+    default: op
+  quest.debug:
+    description: Erlaubt Debug-Mode Änderungen
     default: op

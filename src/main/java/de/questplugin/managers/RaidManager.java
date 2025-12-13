@@ -15,6 +15,11 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Verwaltet alle aktiven Raids
+ *
+ * FIXES:
+ * - Konstruktor-Aufruf korrigiert
+ * - start() Methode wird korrekt aufgerufen
+ * - Bessere Error-Messages
  */
 public class RaidManager extends BaseManager {
 
@@ -59,7 +64,7 @@ public class RaidManager extends BaseManager {
 
                 debug("Raid geladen: " + raidId);
                 debug("  Wellen: " + config.getWaves().size());
-                debug("  Biome: " + config.getAllowedBiomes());
+                debug("  Biome: " + config.getAllowedBiomes().size() + " erlaubt");
             }
         }
 
@@ -69,7 +74,9 @@ public class RaidManager extends BaseManager {
     /**
      * Startet einen Raid für einen Spieler
      *
-     * @return true wenn erfolgreich gestartet, false wenn fehler
+     * @param raidId Raid-ID aus raids.yml
+     * @param player Spieler
+     * @return true wenn erfolgreich gestartet, false bei Fehler
      */
     public boolean startRaid(String raidId, Player player) {
         raidId = raidId.toLowerCase();
@@ -78,6 +85,7 @@ public class RaidManager extends BaseManager {
         RaidConfig config = raidConfigs.get(raidId);
         if (config == null) {
             debug("Raid-Config nicht gefunden: " + raidId);
+            debug("Verfügbare Raids: " + raidConfigs.keySet());
             return false;
         }
 
@@ -90,10 +98,12 @@ public class RaidManager extends BaseManager {
         // Prüfe Biom
         if (!config.isAllowedBiome(player.getLocation().getBlock().getBiome())) {
             debug("Biom nicht erlaubt: " + player.getLocation().getBlock().getBiome());
+            debug("Erlaubte Biome: " + config.getAllowedBiomes());
             return false;
         }
 
-        // Erstelle Raid-Instanz
+        // Erstelle Raid-Instanz mit KORREKTER Parameter-Reihenfolge
+        // WICHTIG: RaidConfig, Player, Plugin
         RaidInstance raid = new RaidInstance(config, player, plugin);
         activeRaids.put(player.getUniqueId(), raid);
 
@@ -106,6 +116,9 @@ public class RaidManager extends BaseManager {
 
     /**
      * Stoppt einen Raid vorzeitig
+     *
+     * @param player Spieler
+     * @return true wenn gestoppt, false wenn nicht in Raid
      */
     public boolean stopRaid(Player player) {
         RaidInstance raid = activeRaids.remove(player.getUniqueId());
@@ -136,6 +149,7 @@ public class RaidManager extends BaseManager {
      */
     public void removeRaid(UUID playerUUID) {
         activeRaids.remove(playerUUID);
+        debug("Raid entfernt für UUID: " + playerUUID);
     }
 
     /**
@@ -163,22 +177,37 @@ public class RaidManager extends BaseManager {
      * Stoppt alle aktiven Raids (beim Plugin-Disable)
      */
     public void shutdown() {
+        if (activeRaids.isEmpty()) {
+            debug("Keine aktiven Raids zum Stoppen");
+            return;
+        }
+
         info("Stoppe " + activeRaids.size() + " aktive Raids...");
 
+        // Kopie erstellen um ConcurrentModificationException zu vermeiden
         for (RaidInstance raid : new ArrayList<>(activeRaids.values())) {
-            raid.stop();
+            try {
+                raid.stop();
+            } catch (Exception e) {
+                warn("Fehler beim Stoppen von Raid: " + e.getMessage());
+            }
         }
 
         activeRaids.clear();
+        info("Alle Raids gestoppt");
     }
 
     @Override
     public void reload() {
+        info("Lade RaidManager neu...");
+
         // Stoppe alle aktiven Raids vor Reload
         shutdown();
 
         raidConfigs.clear();
         debugMode = plugin.getConfig().getBoolean("debug-mode", false);
         loadRaidConfigs();
+
+        info("RaidManager neu geladen");
     }
 }

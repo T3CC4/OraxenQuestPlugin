@@ -18,6 +18,8 @@ import java.util.logging.Level;
  * - Quest-State
  * - Tracked Players
  * - Processed Chests
+ *
+ * FIX: Verhindert async Tasks während Plugin-Disable
  */
 public class DataManager {
 
@@ -27,6 +29,7 @@ public class DataManager {
 
     // Performance: Verhindere excessive Saves
     private volatile boolean saveScheduled = false;
+    private volatile boolean pluginDisabling = false; // NEU
     private static final long SAVE_DELAY_TICKS = 100L; // 5 Sekunden
 
     public DataManager(OraxenQuestPlugin plugin) {
@@ -70,8 +73,15 @@ public class DataManager {
 
     /**
      * Speichert Daten asynchron (Performance)
+     * WICHTIG: Nur wenn Plugin NICHT deaktiviert wird!
      */
     public void saveAsync() {
+        // FIX: Kein async wenn Plugin disabled wird
+        if (pluginDisabling) {
+            save(); // Synchron speichern
+            return;
+        }
+
         if (saveScheduled) {
             return; // Bereits ein Save geplant
         }
@@ -91,6 +101,14 @@ public class DataManager {
         return CompletableFuture.runAsync(() -> save());
     }
 
+    /**
+     * Markiert dass Plugin disabled wird
+     * Ab jetzt nur noch synchrone Saves!
+     */
+    public void setDisabling() {
+        this.pluginDisabling = true;
+    }
+
     // ==================== QUEST DATEN ====================
 
     /**
@@ -104,7 +122,13 @@ public class DataManager {
         data.set("quest.start-time", startTime);
         data.set("quest.next-available", nextAvailable);
         data.set("quest.last-player-uuid", lastPlayerUUID);
-        saveAsync(); // Asynchron speichern
+
+        // FIX: Prüfe ob Plugin disabled wird
+        if (pluginDisabling) {
+            save(); // Synchron
+        } else {
+            saveAsync(); // Asynchron nur wenn Plugin läuft
+        }
     }
 
     public String getQuestRequiredItem() {
@@ -142,7 +166,13 @@ public class DataManager {
             uuidStrings.add(uuid.toString());
         }
         data.set("quest.tracked-players", uuidStrings);
-        saveAsync();
+
+        // FIX: Prüfe ob Plugin disabled wird
+        if (pluginDisabling) {
+            save(); // Synchron
+        } else {
+            saveAsync();
+        }
     }
 
     /**
@@ -181,7 +211,13 @@ public class DataManager {
         }
 
         data.set("chests.processed", locationStrings);
-        saveAsync();
+
+        // FIX: Prüfe ob Plugin disabled wird
+        if (pluginDisabling) {
+            save(); // Synchron
+        } else {
+            saveAsync();
+        }
     }
 
     /**

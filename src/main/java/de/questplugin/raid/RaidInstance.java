@@ -18,6 +18,11 @@ import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * Aktive Raid-Instanz mit MobHelper für Equipment
+ *
+ * FIXES:
+ * - Konstruktor-Parameter-Reihenfolge korrigiert
+ * - start() und stop() Methoden hinzugefügt
+ * - Bessere Error-Handling
  */
 public class RaidInstance {
 
@@ -32,16 +37,28 @@ public class RaidInstance {
     private final Set<UUID> aliveMobs = new HashSet<>();
     private BukkitTask currentTask;
 
-    public RaidInstance(OraxenQuestPlugin plugin, RaidConfig config, Player player) {
+    public RaidInstance(RaidConfig config, Player player, OraxenQuestPlugin plugin) {
         this.plugin = plugin;
         this.config = config;
         this.player = player;
         this.spawnLocation = player.getLocation().clone();
         this.state = RaidState.PREPARING;
         this.currentWave = 0;
+    }
 
+    /**
+     * Startet den Raid
+     */
+    public void start() {
         createBossBar();
         startPreparation();
+    }
+
+    /**
+     * Stoppt den Raid vorzeitig
+     */
+    public void stop() {
+        cancel("Manuell gestoppt");
     }
 
     private void createBossBar() {
@@ -104,6 +121,10 @@ public class RaidInstance {
         state = RaidState.ACTIVE;
         WaveConfig wave = config.getWaves().get(currentWave - 1);
 
+        plugin.getPluginLogger().debug("=== Start Wave " + currentWave + " ===");
+        plugin.getPluginLogger().debug("Wave Name: " + wave.getDisplayName());
+        plugin.getPluginLogger().debug("Mob Types: " + wave.getMobs().size());
+
         String title = ChatColor.translateAlternateColorCodes('&',
                 config.getDisplayName() + " &7- " + wave.getDisplayName());
         bossBar.setTitle(title);
@@ -122,46 +143,78 @@ public class RaidInstance {
         double difficultyMultiplier = config.getDifficultyMultiplier();
         int spawnRadius = config.getSpawnRadius();
 
+        plugin.getPluginLogger().debug("=== Spawn Wave " + currentWave + " ===");
+        plugin.getPluginLogger().debug("Mob-Typen: " + wave.getMobs().size());
+
         for (WaveConfig.MobSpawn mobSpawn : wave.getMobs()) {
+            plugin.getPluginLogger().debug("Spawne " + mobSpawn.getAmount() + "x " + mobSpawn.getType());
+
             for (int i = 0; i < mobSpawn.getAmount(); i++) {
-                Location loc = getRandomSpawnLocation(spawnRadius);
-                Entity entity = spawnLocation.getWorld().spawnEntity(loc, mobSpawn.getType());
+                try {
+                    Location loc = getRandomSpawnLocation(spawnRadius);
 
-                if (entity instanceof LivingEntity) {
-                    LivingEntity mob = (LivingEntity) entity;
-                    aliveMobs.add(mob.getUniqueId());
+                    // Debug-Ausgabe
+                    plugin.getPluginLogger().debug("  Spawn-Location: " +
+                            loc.getBlockX() + ", " + loc.getBlockY() + ", " + loc.getBlockZ());
 
-                    // Health
-                    double health = mobSpawn.getHealth() * difficultyMultiplier;
-                    mob.getAttribute(Attribute.MAX_HEALTH).setBaseValue(health);
-                    mob.setHealth(health);
-
-                    // Damage (nur für Mobs mit Angriff)
-                    if (mob.getAttribute(Attribute.MAX_HEALTH) != null) {
-                        double damage = mobSpawn.getDamage() * difficultyMultiplier;
-                        mob.getAttribute(Attribute.ATTACK_DAMAGE).setBaseValue(damage);
+                    // Validierung
+                    if (loc.getWorld() == null) {
+                        plugin.getLogger().severe("Spawn-Location hat keine World!");
+                        continue;
                     }
 
-                    // Custom Name
-                    if (mobSpawn.getCustomName() != null) {
-                        mob.setCustomName(ChatColor.translateAlternateColorCodes('&',
-                                mobSpawn.getCustomName()));
-                        mob.setCustomNameVisible(true);
+                    // Spawne Entity
+                    Entity entity = loc.getWorld().spawnEntity(loc, mobSpawn.getType());
+
+                    if (entity instanceof LivingEntity) {
+                        LivingEntity mob = (LivingEntity) entity;
+                        aliveMobs.add(mob.getUniqueId());
+
+                        // Health
+                        double health = mobSpawn.getHealth() * difficultyMultiplier;
+                        if (mob.getAttribute(Attribute.MAX_HEALTH) != null) {
+                            mob.getAttribute(Attribute.MAX_HEALTH).setBaseValue(health);
+                            mob.setHealth(health);
+                        }
+
+                        // Damage (nur für Mobs mit Angriff)
+                        if (mob.getAttribute(Attribute.ATTACK_DAMAGE) != null) {
+                            double damage = mobSpawn.getDamage() * difficultyMultiplier;
+                            mob.getAttribute(Attribute.ATTACK_DAMAGE).setBaseValue(damage);
+                        }
+
+                        // Custom Name
+                        if (mobSpawn.getCustomName() != null) {
+                            mob.setCustomName(ChatColor.translateAlternateColorCodes('&',
+                                    mobSpawn.getCustomName()));
+                            mob.setCustomNameVisible(true);
+                        }
+
+                        // Equipment mit MobHelper
+                        if (mobSpawn.hasEquipment()) {
+                            applyEquipment(mob);
+                        }
+
+                        mob.setRemoveWhenFarAway(false);
+                        mob.setPersistent(true);
+
+                        plugin.getPluginLogger().debug("  ✓ Mob gespawnt: " + mob.getType() +
+                                " (UUID: " + mob.getUniqueId() + ")");
+                    } else {
+                        plugin.getLogger().warning("Entity ist kein LivingEntity: " + entity.getType());
                     }
 
-                    // Equipment mit MobHelper
-                    if (mobSpawn.hasEquipment()) {
-                        applyEquipment(mob);
-                    }
-
-                    mob.setRemoveWhenFarAway(false);
-                    mob.setPersistent(true);
+                } catch (Exception e) {
+                    plugin.getLogger().severe("Fehler beim Spawnen von " + mobSpawn.getType() +
+                            ": " + e.getMessage());
+                    e.printStackTrace();
                 }
             }
         }
 
-        plugin.getPluginLogger().debug("Welle " + currentWave + ": " +
+        plugin.getPluginLogger().info("Welle " + currentWave + ": " +
                 aliveMobs.size() + " Mobs gespawnt");
+        plugin.getPluginLogger().debug("==========================");
     }
 
     /**
@@ -363,9 +416,26 @@ public class RaidInstance {
 
         double x = spawnLocation.getX() + distance * Math.cos(angle);
         double z = spawnLocation.getZ() + distance * Math.sin(angle);
-        double y = spawnLocation.getWorld().getHighestBlockYAt((int) x, (int) z) + 1;
 
-        return new Location(spawnLocation.getWorld(), x, y, z);
+        // Finde sichere Y-Koordinate
+        World world = spawnLocation.getWorld();
+        int blockX = (int) Math.floor(x);
+        int blockZ = (int) Math.floor(z);
+
+        // Nutze höchsten Block + 1 für Y
+        int y = world.getHighestBlockYAt(blockX, blockZ) + 1;
+
+        // Mindesthöhe validieren
+        if (y < world.getMinHeight()) {
+            y = world.getMinHeight() + 1;
+        }
+
+        // Maximalhöhe validieren
+        if (y > world.getMaxHeight() - 2) {
+            y = world.getMaxHeight() - 2;
+        }
+
+        return new Location(world, x, y, z);
     }
 
     private boolean isNearSpawnLocation() {
