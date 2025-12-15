@@ -1,6 +1,7 @@
 package de.questplugin.managers;
 
 import de.questplugin.OraxenQuestPlugin;
+import de.questplugin.utils.DropMechanics;
 import de.questplugin.utils.MobHelper;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.entity.EntityType;
@@ -11,15 +12,28 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
- * Verwaltet Mob-Drops mit MobHelper für case-insensitive Mob-Namen
+ * Verwaltet Mob-Drops mit fortgeschrittener Drop-Mechanik
  */
 public class MobDropManager extends BaseManager {
 
     private final Map<EntityType, List<DropEntry>> mobDrops = new ConcurrentHashMap<>();
 
+    // Gleiche Drop-Methode wie BlockDropManager
+    private BlockDropManager.DropMethod dropMethod = BlockDropManager.DropMethod.HYBRID;
+
     public MobDropManager(OraxenQuestPlugin plugin) {
         super(plugin);
+        loadConfig();
         loadMobDrops();
+    }
+
+    private void loadConfig() {
+        String methodStr = plugin.getConfig().getString("drop-mechanics.method", "HYBRID");
+        try {
+            dropMethod = BlockDropManager.DropMethod.valueOf(methodStr.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            dropMethod = BlockDropManager.DropMethod.HYBRID;
+        }
     }
 
     private void loadMobDrops() {
@@ -34,13 +48,10 @@ public class MobDropManager extends BaseManager {
         int invalidMobs = 0;
 
         for (String mobType : section.getKeys(false)) {
-            // CASE-INSENSITIVE mit MobHelper
             EntityType entityType = MobHelper.parseConfigMob(mobType);
 
             if (entityType == null) {
                 warn("Ungültiger Mob-Typ in mob-drops: '" + mobType + "'");
-                warn("  Nutze /quest mobs für gültige Mob-Namen");
-                warn("  Beispiel: ZOMBIE, zombie, Zombie (alle funktionieren)");
                 invalidMobs++;
                 continue;
             }
@@ -55,18 +66,43 @@ public class MobDropManager extends BaseManager {
                 totalDrops += drops.size();
 
                 debug("Mob-Drops: " + entityType + " → " + drops.size() + " Items");
-                debug("  Geladen von Config-Key: '" + mobType + "'");
 
-                // Zeige deutschen Namen wenn verfügbar
-                String germanName = MobHelper.getGermanName(entityType);
-                if (!germanName.equals(entityType.name())) {
-                    debug("  Deutscher Name: " + germanName);
+                for (DropEntry entry : drops) {
+                    debug("  - " + entry.oraxenItemId + " (" + entry.chance + "%)");
+
+                    if (debugMode) {
+                        debugLootingScaling(entry.chance);
+                    }
                 }
             }
         }
 
         info("Mob-Drops: " + totalDrops + " Items für " + mobDrops.size() + " Mobs" +
                 (invalidMobs > 0 ? " (" + invalidMobs + " ungültig)" : ""));
+    }
+
+    private void debugLootingScaling(double baseChance) {
+        debug("  Looting-Skalierung für " + baseChance + "%:");
+        for (int looting = 0; looting <= 10; looting += 3) {
+            String result = switch (dropMethod) {
+                case DIMINISHING -> {
+                    double finalChance = DropMechanics.calculateDropChance(baseChance, looting);
+                    yield String.format("    Looting %d: %.3f%% (+%.3f%%)",
+                            looting, finalChance, finalChance - baseChance);
+                }
+                case BONUS_ROLLS -> {
+                    var rolls = DropMechanics.calculateBonusRolls(baseChance, looting);
+                    yield String.format("    Looting %d: %d rolls @ %.3f%% = %.3f%% total",
+                            looting, rolls.rolls, rolls.chancePerRoll, rolls.totalChance);
+                }
+                case HYBRID -> {
+                    var hybrid = DropMechanics.calculateHybridDrop(baseChance, looting);
+                    yield String.format("    Looting %d: %d rolls @ %.3f%% = %.3f%% total",
+                            looting, hybrid.rolls, hybrid.chancePerRoll, hybrid.totalChance);
+                }
+            };
+            debug(result);
+        }
     }
 
     /**
@@ -76,6 +112,7 @@ public class MobDropManager extends BaseManager {
         List<DropEntry> entries = mobDrops.get(entityType);
 
         debug("getMobDrops(" + entityType + ", Looting=" + lootingLevel + ")");
+        debug("  Methode: " + dropMethod);
         debug("  Einträge: " + (entries != null ? entries.size() : 0));
 
         if (entries == null || entries.isEmpty()) {
@@ -86,36 +123,49 @@ public class MobDropManager extends BaseManager {
     }
 
     /**
-     * Verarbeitet Drops mit Enchantment-Bonus
+     * Identisch zu BlockDropManager, aber für Mobs
      */
-    private List<ItemStack> processDrops(List<DropEntry> entries, int enchantLevel) {
+    private List<ItemStack> processDrops(List<DropEntry> entries, int lootingLevel) {
         List<ItemStack> drops = new ArrayList<>();
         ThreadLocalRandom random = ThreadLocalRandom.current();
 
         for (DropEntry entry : entries) {
-            double modifiedChance = Math.min(100.0, entry.chance + enchantLevel);
-            double roll = random.nextDouble() * 100;
-            boolean success = roll < modifiedChance;
+            debug("  Drop: " + entry.oraxenItemId + " (Base: " + entry.chance + "%)");
 
-            if (debugMode) {
-                debug("  Drop: " + entry.oraxenItemId);
-                debug("    Chance: " + entry.chance + "% → " + modifiedChance + "% (+" + enchantLevel + ")");
-                debug("    Roll: " + String.format("%.2f", roll));
-                debug("    " + (success ? "✓ ERFOLG" : "✗ MISS"));
+            boolean dropped = false;
+            int amount = 0;
+
+            switch (dropMethod) {
+                case DIMINISHING:
+                    dropped = rollDiminishing(entry.chance, lootingLevel, random);
+                    if (dropped) {
+                        amount = DropMechanics.calculateDropAmount(
+                                entry.minAmount, entry.maxAmount, lootingLevel);
+                    }
+                    break;
+
+                case BONUS_ROLLS:
+                    amount = rollBonusRolls(entry.chance, lootingLevel,
+                            entry.minAmount, entry.maxAmount, random);
+                    dropped = amount > 0;
+                    break;
+
+                case HYBRID:
+                    amount = rollHybrid(entry.chance, lootingLevel,
+                            entry.minAmount, entry.maxAmount, random);
+                    dropped = amount > 0;
+                    break;
             }
 
-            if (success) {
+            if (dropped && amount > 0) {
                 ItemStack item = buildItem(entry.oraxenItemId);
-
                 if (item != null) {
-                    int amount = random.nextInt(entry.minAmount, entry.maxAmount + 1);
-
-                    if (amount > 0) {
-                        item.setAmount(amount);
-                        drops.add(item);
-                        debug("    → Item: " + item.getType() + " x" + amount);
-                    }
+                    item.setAmount(amount);
+                    drops.add(item);
+                    debug("    ✓ ERFOLG: " + item.getType() + " x" + amount);
                 }
+            } else {
+                debug("    ✗ MISS");
             }
         }
 
@@ -123,10 +173,97 @@ public class MobDropManager extends BaseManager {
         return drops;
     }
 
+    private boolean rollDiminishing(double baseChance, int lootingLevel, ThreadLocalRandom random) {
+        double finalChance = DropMechanics.calculateDropChance(baseChance, lootingLevel);
+        double roll = random.nextDouble() * 100;
+
+        if (debugMode) {
+            debug("    Diminishing: " + baseChance + "% → " +
+                    String.format("%.3f%%", finalChance) +
+                    " | Roll: " + String.format("%.3f", roll));
+        }
+
+        return roll < finalChance;
+    }
+
+    private int rollBonusRolls(double baseChance, int lootingLevel,
+                               int minAmount, int maxAmount, ThreadLocalRandom random) {
+        var result = DropMechanics.calculateBonusRolls(baseChance, lootingLevel);
+
+        if (debugMode) {
+            debug("    Bonus Rolls: " + result);
+        }
+
+        int totalAmount = 0;
+
+        for (int i = 0; i < result.rolls; i++) {
+            double roll = random.nextDouble() * 100;
+
+            if (roll < result.chancePerRoll) {
+                int amount = random.nextInt(minAmount, maxAmount + 1);
+                totalAmount += amount;
+
+                if (debugMode) {
+                    debug("      Roll " + (i + 1) + ": " +
+                            String.format("%.3f < %.3f", roll, result.chancePerRoll) +
+                            " → +" + amount);
+                }
+            } else if (debugMode) {
+                debug("      Roll " + (i + 1) + ": " +
+                        String.format("%.3f >= %.3f", roll, result.chancePerRoll) +
+                        " → Miss");
+            }
+        }
+
+        return totalAmount;
+    }
+
+    private int rollHybrid(double baseChance, int lootingLevel,
+                           int minAmount, int maxAmount, ThreadLocalRandom random) {
+        var result = DropMechanics.calculateHybridDrop(baseChance, lootingLevel);
+
+        if (debugMode) {
+            debug("    Hybrid: " + result);
+        }
+
+        int totalAmount = 0;
+
+        for (int i = 0; i < result.rolls; i++) {
+            double roll = random.nextDouble() * 100;
+
+            if (roll < result.chancePerRoll) {
+                int amount = random.nextInt(minAmount, maxAmount + 1);
+                totalAmount += amount;
+
+                if (debugMode) {
+                    debug("      Roll " + (i + 1) + ": " +
+                            String.format("%.3f < %.3f", roll, result.chancePerRoll) +
+                            " → +" + amount);
+                }
+            } else if (debugMode) {
+                debug("      Roll " + (i + 1) + ": " +
+                        String.format("%.3f >= %.3f", roll, result.chancePerRoll) +
+                        " → Miss");
+            }
+        }
+
+        return totalAmount;
+    }
+
+    public void setDropMethod(BlockDropManager.DropMethod method) {
+        this.dropMethod = method;
+        info("Drop-Methode geändert zu: " + method);
+    }
+
+    public BlockDropManager.DropMethod getDropMethod() {
+        return dropMethod;
+    }
+
     @Override
     public void reload() {
         mobDrops.clear();
         debugMode = plugin.getConfig().getBoolean("debug-mode", false);
+        loadConfig();
         loadMobDrops();
     }
 }

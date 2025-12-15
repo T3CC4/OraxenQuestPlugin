@@ -19,10 +19,10 @@ import java.util.concurrent.ThreadLocalRandom;
 /**
  * Aktive Raid-Instanz mit MobHelper für Equipment
  *
- * FIXES:
- * - Konstruktor-Parameter-Reihenfolge korrigiert
- * - start() und stop() Methoden hinzugefügt
- * - Bessere Error-Handling
+ * FEATURES:
+ * - BossBar mit Mob-Counter
+ * - Spectator-System (andere Spieler sehen/hören alles, kriegen aber keine Drops)
+ * - Phasen-Tracking
  */
 public class RaidInstance {
 
@@ -36,6 +36,10 @@ public class RaidInstance {
     private int currentWave;
     private final Set<UUID> aliveMobs = new HashSet<>();
     private BukkitTask currentTask;
+
+    // SPECTATOR-SYSTEM
+    private final Set<UUID> spectators = new HashSet<>();
+    private static final int SPECTATOR_RADIUS = 50; // Blöcke
 
     public RaidInstance(RaidConfig config, Player player, OraxenQuestPlugin plugin) {
         this.plugin = plugin;
@@ -97,9 +101,16 @@ public class RaidInstance {
             bossBar.setProgress(Math.max(0, Math.min(1, progress)));
             bossBar.setTitle(ChatColor.YELLOW + "Vorbereitung: " + countdown[0] + "s");
 
+            // Spectators updaten
+            updateSpectators();
+
             // Sound bei 10, 5, 3, 2, 1
             if (countdown[0] <= 10 && countdown[0] >= 1) {
+                // Sound für Hauptspieler
                 player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_HAT, 1.0f, 1.5f);
+
+                // Sound für Spectators
+                playSpectatorSound(Sound.BLOCK_NOTE_BLOCK_HAT, 0.5f, 1.5f);
             }
 
             if (countdown[0] <= 0) {
@@ -135,6 +146,10 @@ public class RaidInstance {
         player.sendMessage(ChatColor.translateAlternateColorCodes('&', wave.getDisplayName()));
         player.playSound(player.getLocation(), Sound.ENTITY_WITHER_SPAWN, 1.0f, 1.0f);
 
+        // Spectator-Effekte
+        playSpectatorSound(Sound.ENTITY_WITHER_SPAWN, 0.7f, 1.0f);
+        sendSpectatorMessage(ChatColor.translateAlternateColorCodes('&', wave.getDisplayName()));
+
         spawnWave(wave);
         startWaveMonitoring(wave);
     }
@@ -153,11 +168,9 @@ public class RaidInstance {
                 try {
                     Location loc = getRandomSpawnLocation(spawnRadius);
 
-                    // Debug-Ausgabe
                     plugin.getPluginLogger().debug("  Spawn-Location: " +
                             loc.getBlockX() + ", " + loc.getBlockY() + ", " + loc.getBlockZ());
 
-                    // Validierung
                     if (loc.getWorld() == null) {
                         plugin.getLogger().severe("Spawn-Location hat keine World!");
                         continue;
@@ -177,7 +190,7 @@ public class RaidInstance {
                             mob.setHealth(health);
                         }
 
-                        // Damage (nur für Mobs mit Angriff)
+                        // Damage
                         if (mob.getAttribute(Attribute.ATTACK_DAMAGE) != null) {
                             double damage = mobSpawn.getDamage() * difficultyMultiplier;
                             mob.getAttribute(Attribute.ATTACK_DAMAGE).setBaseValue(damage);
@@ -190,7 +203,7 @@ public class RaidInstance {
                             mob.setCustomNameVisible(true);
                         }
 
-                        // Equipment mit MobHelper
+                        // Equipment
                         if (mobSpawn.hasEquipment()) {
                             applyEquipment(mob);
                         }
@@ -200,8 +213,6 @@ public class RaidInstance {
 
                         plugin.getPluginLogger().debug("  ✓ Mob gespawnt: " + mob.getType() +
                                 " (UUID: " + mob.getUniqueId() + ")");
-                    } else {
-                        plugin.getLogger().warning("Entity ist kein LivingEntity: " + entity.getType());
                     }
 
                 } catch (Exception e) {
@@ -217,9 +228,6 @@ public class RaidInstance {
         plugin.getPluginLogger().debug("==========================");
     }
 
-    /**
-     * Equipment-System mit MobHelper Integration
-     */
     private void applyEquipment(LivingEntity mob) {
         MobEquipmentManager equipmentManager = plugin.getMobEquipmentManager();
         List<MobEquipmentManager.EquipmentEntry> equipment =
@@ -243,7 +251,6 @@ public class RaidInstance {
                 ItemStack item = buildOraxenItem(entry.getOraxenItemId());
 
                 if (item != null) {
-                    // Equipment Slot setzen
                     switch (entry.getSlot()) {
                         case MAIN_HAND:
                             entityEquipment.setItemInMainHand(item);
@@ -287,9 +294,6 @@ public class RaidInstance {
         }
     }
 
-    /**
-     * Baut Oraxen-Item
-     */
     private ItemStack buildOraxenItem(String oraxenId) {
         try {
             io.th0rgal.oraxen.items.ItemBuilder builder =
@@ -309,6 +313,9 @@ public class RaidInstance {
         }
     }
 
+    /**
+     * FIX: BossBar zeigt jetzt Mob-Counter
+     */
     private void startWaveMonitoring(WaveConfig wave) {
         int totalMobs = wave.getTotalMobCount();
 
@@ -324,9 +331,19 @@ public class RaidInstance {
                 return entity == null || entity.isDead();
             });
 
-            // BossBar Update
+            // BossBar Update mit Counter
             double progress = (double) aliveMobs.size() / totalMobs;
             bossBar.setProgress(Math.max(0, Math.min(1, progress)));
+
+            // UPDATE: Zeige verbleibende Mobs
+            String title = ChatColor.translateAlternateColorCodes('&',
+                    config.getDisplayName() + " &7- " + wave.getDisplayName());
+            bossBar.setTitle(title + ChatColor.GRAY + " [" +
+                    ChatColor.RED + aliveMobs.size() + ChatColor.GRAY + "/" +
+                    ChatColor.WHITE + totalMobs + ChatColor.GRAY + "]");
+
+            // Spectators updaten
+            updateSpectators();
 
             // Welle abgeschlossen?
             if (aliveMobs.isEmpty()) {
@@ -341,6 +358,10 @@ public class RaidInstance {
         player.sendMessage(ChatColor.GREEN + "✓ " + wave.getDisplayName() +
                 " abgeschlossen!");
         player.playSound(player.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 1.0f, 1.0f);
+
+        // Spectator-Effekte
+        playSpectatorSound(Sound.UI_TOAST_CHALLENGE_COMPLETE, 0.7f, 1.0f);
+        sendSpectatorMessage(ChatColor.GREEN + "✓ " + wave.getDisplayName() + " abgeschlossen!");
 
         if (currentWave >= config.getWaves().size()) {
             complete();
@@ -365,13 +386,20 @@ public class RaidInstance {
 
         player.sendMessage("");
         player.sendMessage(ChatColor.GOLD + "━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        player.sendMessage(ChatColor.GREEN + "✓ RAID ABGESCHLOSSEN!");
+        player.sendMessage(ChatColor.GREEN + "✔ RAID ABGESCHLOSSEN!");
         player.sendMessage(ChatColor.translateAlternateColorCodes('&', config.getDisplayName()));
         player.sendMessage(ChatColor.GOLD + "━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
         player.playSound(player.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 1.0f, 0.8f);
 
-        // Belohnungen
+        // Spectator-Finale
+        playSpectatorSound(Sound.UI_TOAST_CHALLENGE_COMPLETE, 1.0f, 0.8f);
+        sendSpectatorMessage(ChatColor.GOLD + "━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        sendSpectatorMessage(ChatColor.GREEN + "✔ RAID ABGESCHLOSSEN!");
+        sendSpectatorMessage(ChatColor.translateAlternateColorCodes('&', config.getDisplayName()));
+        sendSpectatorMessage(ChatColor.GOLD + "━━━━━━━━━━━━━━━━━━━━━━━━━━");
+
+        // Belohnungen (nur für Hauptspieler!)
         config.getRewards().giveRewards(player, plugin);
 
         cleanup();
@@ -382,6 +410,9 @@ public class RaidInstance {
 
         player.sendMessage(ChatColor.RED + "Raid abgebrochen: " + reason);
         player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
+
+        // Spectator-Info
+        sendSpectatorMessage(ChatColor.RED + "Raid abgebrochen: " + reason);
 
         cleanup();
     }
@@ -406,6 +437,7 @@ public class RaidInstance {
         }
         aliveMobs.clear();
 
+        spectators.clear();
         plugin.getRaidManager().removeRaid(player.getUniqueId());
     }
 
@@ -417,20 +449,16 @@ public class RaidInstance {
         double x = spawnLocation.getX() + distance * Math.cos(angle);
         double z = spawnLocation.getZ() + distance * Math.sin(angle);
 
-        // Finde sichere Y-Koordinate
         World world = spawnLocation.getWorld();
         int blockX = (int) Math.floor(x);
         int blockZ = (int) Math.floor(z);
 
-        // Nutze höchsten Block + 1 für Y
         int y = world.getHighestBlockYAt(blockX, blockZ) + 1;
 
-        // Mindesthöhe validieren
         if (y < world.getMinHeight()) {
             y = world.getMinHeight() + 1;
         }
 
-        // Maximalhöhe validieren
         if (y > world.getMaxHeight() - 2) {
             y = world.getMaxHeight() - 2;
         }
@@ -442,6 +470,110 @@ public class RaidInstance {
         return player.getLocation().distance(spawnLocation) <= 50;
     }
 
+    // ==================== SPECTATOR-SYSTEM ====================
+
+    /**
+     * Aktualisiert Spectator-Liste (Spieler im Umkreis)
+     */
+    private void updateSpectators() {
+        Set<UUID> newSpectators = new HashSet<>();
+
+        for (Player p : Bukkit.getOnlinePlayers()) {
+            // Nicht der Hauptspieler
+            if (p.getUniqueId().equals(player.getUniqueId())) {
+                continue;
+            }
+
+            // In selber Welt
+            if (!p.getWorld().equals(spawnLocation.getWorld())) {
+                continue;
+            }
+
+            // Im Umkreis
+            if (p.getLocation().distance(spawnLocation) <= SPECTATOR_RADIUS) {
+                newSpectators.add(p.getUniqueId());
+
+                // Neu hinzugefügt?
+                if (!spectators.contains(p.getUniqueId())) {
+                    onSpectatorJoin(p);
+                }
+
+                // BossBar zeigen
+                if (bossBar != null && !bossBar.getPlayers().contains(p)) {
+                    bossBar.addPlayer(p);
+                }
+            }
+        }
+
+        // Entfernte Spectators
+        for (UUID uuid : spectators) {
+            if (!newSpectators.contains(uuid)) {
+                Player p = Bukkit.getPlayer(uuid);
+                if (p != null) {
+                    onSpectatorLeave(p);
+                    if (bossBar != null) {
+                        bossBar.removePlayer(p);
+                    }
+                }
+            }
+        }
+
+        spectators.clear();
+        spectators.addAll(newSpectators);
+    }
+
+    private void onSpectatorJoin(Player spectator) {
+        spectator.sendMessage(ChatColor.GRAY + "━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        spectator.sendMessage(ChatColor.YELLOW + "Du beobachtest einen Raid!");
+        spectator.sendMessage(ChatColor.GRAY + "Spieler: " + ChatColor.WHITE + player.getName());
+        spectator.sendMessage(ChatColor.translateAlternateColorCodes('&', config.getDisplayName()));
+        spectator.sendMessage(ChatColor.GRAY + "Du erhältst keine Drops, aber siehst alles!");
+        spectator.sendMessage(ChatColor.GRAY + "━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        spectator.playSound(spectator.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.5f, 1.2f);
+    }
+
+    private void onSpectatorLeave(Player spectator) {
+        spectator.sendMessage(ChatColor.GRAY + "Du bist zu weit vom Raid entfernt!");
+    }
+
+    /**
+     * Spielt Sound für alle Spectators
+     */
+    private void playSpectatorSound(Sound sound, float volume, float pitch) {
+        for (UUID uuid : spectators) {
+            Player p = Bukkit.getPlayer(uuid);
+            if (p != null && p.isOnline()) {
+                p.playSound(p.getLocation(), sound, volume, pitch);
+            }
+        }
+    }
+
+    /**
+     * Sendet Message an alle Spectators
+     */
+    private void sendSpectatorMessage(String message) {
+        for (UUID uuid : spectators) {
+            Player p = Bukkit.getPlayer(uuid);
+            if (p != null && p.isOnline()) {
+                p.sendMessage(message);
+            }
+        }
+    }
+
+    /**
+     * Gibt alle aktuellen Spectators zurück
+     */
+    public Set<Player> getSpectators() {
+        Set<Player> players = new HashSet<>();
+        for (UUID uuid : spectators) {
+            Player p = Bukkit.getPlayer(uuid);
+            if (p != null) {
+                players.add(p);
+            }
+        }
+        return players;
+    }
+
     // ==================== GETTER ====================
 
     public Player getPlayer() { return player; }
@@ -449,6 +581,7 @@ public class RaidInstance {
     public RaidState getState() { return state; }
     public int getCurrentWave() { return currentWave; }
     public int getAliveMobCount() { return aliveMobs.size(); }
+    public int getSpectatorCount() { return spectators.size(); }
 
     public enum RaidState {
         PREPARING,
