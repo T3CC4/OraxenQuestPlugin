@@ -27,6 +27,7 @@ import java.util.concurrent.ThreadLocalRandom;
  * - Dynamische Schwierigkeit nach Spieleranzahl
  * - Bessere Belohnungen bei mehr Spielern
  * - BossBar mit Mob-Counter
+ * - NETHER-DECKEN-SCHUTZ: Verhindert Spawns auf Y > 115
  */
 public class RaidInstance {
 
@@ -238,6 +239,12 @@ public class RaidInstance {
                 aliveMobs.size() + " Mobs gespawnt");
     }
 
+    /**
+     * Holt zufällige Spawn-Location mit NETHER-DECKEN-SCHUTZ
+     *
+     * WICHTIG: Im Nether wird verhindert dass Mobs auf Y > 115 spawnen
+     * (Bedrock-Decke ist bei Y=128, darüber ist das Dach)
+     */
     private Location getRandomSpawnLocation(int radius) {
         ThreadLocalRandom random = ThreadLocalRandom.current();
         double angle = random.nextDouble() * 2 * Math.PI;
@@ -252,7 +259,20 @@ public class RaidInstance {
 
         int startY;
         if (world.getEnvironment() == World.Environment.NETHER) {
-            startY = Math.max(1, Math.min(120, spawnLocation.getBlockY()));
+            // WICHTIG: Nether-Decke ist bei Y=128
+            // Verhindere Spawns darüber (z.B. auf Bedrock-Dach bei Y=127+)
+            int playerY = spawnLocation.getBlockY();
+
+            // Wenn Spieler über Y=120, spawne bei Y=100 (sicherer Bereich)
+            if (playerY > 120) {
+                startY = 100;
+                plugin.getPluginLogger().debug("Nether: Spieler bei Y=" + playerY +
+                        " (zu hoch), spawne bei Y=100");
+            } else {
+                // Normaler Fall: Spawne in der Nähe des Spielers
+                // Aber maximal bei Y=115 (nicht zu nah an Decke)
+                startY = Math.max(10, Math.min(115, playerY));
+            }
         } else {
             startY = world.getHighestBlockYAt(blockX, blockZ) + 1;
         }
@@ -263,11 +283,21 @@ public class RaidInstance {
             return safeLoc;
         }
 
-        return spawnLocation.clone().add(
+        // Fallback: Nutze Spieler-Position aber limitiert
+        Location fallback = spawnLocation.clone().add(
                 random.nextDouble(-5, 5),
                 0,
                 random.nextDouble(-5, 5)
         );
+
+        // WICHTIG: Auch Fallback auf Y=115 im Nether limitieren
+        if (world.getEnvironment() == World.Environment.NETHER &&
+                fallback.getBlockY() > 115) {
+            fallback.setY(100);
+            plugin.getPluginLogger().debug("Fallback: Y auf 100 gesetzt (Nether-Decken-Schutz)");
+        }
+
+        return fallback;
     }
 
     private Location findSafeSpawnPoint(World world, int x, int startY, int z) {
