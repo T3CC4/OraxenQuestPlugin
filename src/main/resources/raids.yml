@@ -1,13 +1,16 @@
 # ====================================
-# RAIDS CONFIGURATION
-# Mit MobHelper: Case-insensitive Mobs!
+# RAIDS CONFIGURATION MIT ABILITIES
 # ====================================
-# Beispiele:
-#   - ZOMBIE = zombie = Zombie
-#   - WITHER_SKELETON = wither_skeleton
-#   - PIGLIN_BRUTE = piglin_brute
+# Custom Mobs API Integration!
 #
-# Nutze /quest mobs für alle verfügbaren Mobs!
+# VERFÜGBARE ABILITIES:
+#   - Teleport: Teleportiert zu Spielern
+#   - Regeneration: Regeneriert Leben
+#   - SpeedBoost: Wird schneller
+#   - Knockback: Schleudert Spieler weg
+#   - Invisibility: Wird unsichtbar
+#
+# Abilities werden automatisch hinzugefügt wenn angegeben
 # ====================================
 
 raids:
@@ -15,7 +18,6 @@ raids:
   forest_invasion:
     display-name: "&2Wald-Invasion"
 
-    # Biome (case-insensitive)
     allowed-biomes:
       - FOREST
       - BIRCH_FOREST
@@ -31,15 +33,16 @@ raids:
         delay-after: 5
         mobs:
           zombie:
-            type: zombie  # Kleinschreibung funktioniert!
+            type: zombie
             amount: 8
             health: 30.0
             damage: 3.0
             custom-name: "&2Wald-Zombie"
-            use-equipment: true  # Equipment aus config.yml
+            use-equipment: true
+            # Keine Abilities = normale Mobs
 
           spider:
-            type: SPIDER  # Großschreibung auch!
+            type: SPIDER
             amount: 5
             health: 25.0
             damage: 2.5
@@ -47,16 +50,18 @@ raids:
             use-equipment: false
 
       wave2:
-        name: "&eZweite Welle - Skelette"
+        name: "&eZweite Welle - Skelette mit Abilities"
         delay-after: 10
         mobs:
           skeleton:
-            type: Skeleton  # Gemischte Schreibweise!
+            type: Skeleton
             amount: 6
             health: 25.0
             damage: 4.0
             custom-name: "&2Wald-Skelett"
             use-equipment: true
+            abilities:  # NEU: Abilities!
+              - "SpeedBoost"
 
           creeper:
             type: CREEPER
@@ -65,9 +70,11 @@ raids:
             damage: 5.0
             custom-name: "&2Explosiver Wächter"
             use-equipment: false
+            abilities:
+              - "Invisibility"  # Unsichtbare Creeper!
 
       wave3:
-        name: "&cDritte Welle - Boss"
+        name: "&cDritte Welle - Elite Boss"
         delay-after: 0
         mobs:
           giant_zombie:
@@ -77,6 +84,9 @@ raids:
             damage: 10.0
             custom-name: "&c&lWald-Tyrann"
             use-equipment: true
+            abilities:
+              - "Regeneration"  # Boss regeneriert sich!
+              - "Knockback"
 
           minion_zombies:
             type: ZOMBIE
@@ -85,6 +95,8 @@ raids:
             damage: 4.0
             custom-name: "&7Diener"
             use-equipment: true
+            abilities:
+              - "SpeedBoost"
 
     rewards:
       oraxen-items:
@@ -113,7 +125,7 @@ raids:
         delay-after: 8
         mobs:
           husk:
-            type: HUSK  # Wüsten-Zombie
+            type: HUSK
             amount: 12
             health: 35.0
             damage: 4.0
@@ -121,16 +133,18 @@ raids:
             use-equipment: true
 
       wave2:
-        name: "&eWelle 2 - Stray-Angriff"
+        name: "&eWelle 2 - Teleporter"
         delay-after: 8
         mobs:
           stray:
-            type: stray  # Eis-Skelett (spawnt trotzdem in Wüste)
+            type: stray
             amount: 8
             health: 30.0
             damage: 5.0
             custom-name: "&bFrostiger Bogenschütze"
             use-equipment: true
+            abilities:
+              - "Teleport"  # Teleportiert zu Spielern!
 
           spider:
             type: spider
@@ -139,6 +153,8 @@ raids:
             damage: 3.0
             custom-name: "&6Wüsten-Spinne"
             use-equipment: false
+            abilities:
+              - "SpeedBoost"
 
       wave3:
         name: "&cWelle 3 - Enderman-Invasion"
@@ -151,6 +167,9 @@ raids:
             damage: 8.0
             custom-name: "&5Teleporter"
             use-equipment: false
+            abilities:
+              - "Teleport"
+              - "Invisibility"
 
     rewards:
       oraxen-items:
@@ -163,7 +182,6 @@ raids:
   nether_apocalypse:
     display-name: "&4&lNether-Apokalypse"
 
-    # Alle Nether-Biome
     allowed-biomes:
       - NETHER_WASTES
       - crimson_forest
@@ -189,12 +207,14 @@ raids:
             use-equipment: true
 
           piglin_brute:
-            type: piglin_brute  # Elite-Piglin
+            type: piglin_brute
             amount: 3
             health: 80.0
             damage: 10.0
             custom-name: "&c&lPiglin-Brutalo"
             use-equipment: true
+            abilities:
+              - "Regeneration"
 
       wave2:
         name: "&cWelle 2 - Höllenhunde"
@@ -207,6 +227,9 @@ raids:
             damage: 8.0
             custom-name: "&6Flammen-Wächter"
             use-equipment: false
+            abilities:
+              - "Teleport"
+              - "SpeedBoost"
 
           wither_skeleton:
             type: WITHER_SKELETON
@@ -215,6 +238,9 @@ raids:
             damage: 9.0
             custom-name: "&8Wither-Krieger"
             use-equipment: true
+            abilities:
+              - "Regeneration"
+              - "Knockback"
 
       wave3:
         name: "&4Welle 3 - Ghast-Schwarm"
@@ -227,9 +253,11 @@ raids:
             damage: 12.0
             custom-name: "&fGeist der Hölle"
             use-equipment: false
+            abilities:
+              - "Regeneration"
 
       wave4:
-        name: "&4&lFINALE - Wither-Beschwörung"
+        name: "&4&lFINALE - Nether-Tyrann"
         delay-after: 0
         mobs:
           wither_skeleton_boss:
@@ -239,6 +267,11 @@ raids:
             damage: 20.0
             custom-name: "&4&lNether-Tyrann"
             use-equipment: true
+            abilities:
+              - "Regeneration"
+              - "Knockback"
+              - "SpeedBoost"
+              - "Invisibility"  # Boss mit allen Abilities!
 
           support:
             type: PIGLIN_BRUTE
@@ -247,6 +280,9 @@ raids:
             damage: 12.0
             custom-name: "&cElite-Wächter"
             use-equipment: true
+            abilities:
+              - "Regeneration"
+              - "Knockback"
 
     rewards:
       oraxen-items:
@@ -262,7 +298,6 @@ raids:
   undead_horde:
     display-name: "&8&lUntoten-Horde"
 
-    # Alle Biome erlaubt
     allowed-biomes:
       - "*"
 
@@ -290,9 +325,11 @@ raids:
             damage: 4.0
             custom-name: "&9Ertrunkener"
             use-equipment: true
+            abilities:
+              - "Regeneration"
 
       wave2:
-        name: "&7Welle 2 - Skelett-Legion"
+        name: "&7Welle 2 - Schnelle Skelette"
         delay-after: 8
         mobs:
           skeleton:
@@ -302,9 +339,11 @@ raids:
             damage: 5.0
             custom-name: "&7Skelett-Krieger"
             use-equipment: true
+            abilities:
+              - "SpeedBoost"
 
       wave3:
-        name: "&4Welle 3 - Zombie-Dorfbewohner"
+        name: "&4Welle 3 - Infizierte"
         delay-after: 10
         mobs:
           zombie_villager:
@@ -314,6 +353,9 @@ raids:
             damage: 4.5
             custom-name: "&aInfizierter Dorfbewohner"
             use-equipment: true
+            abilities:
+              - "Regeneration"
+              - "SpeedBoost"
 
       wave4:
         name: "&4&lBOSS - Nekromant"
@@ -326,6 +368,11 @@ raids:
             damage: 15.0
             custom-name: "&5&lNekromant"
             use-equipment: true
+            abilities:
+              - "Teleport"
+              - "Regeneration"
+              - "Invisibility"
+              - "Knockback"
 
           summons:
             type: ZOMBIE
@@ -334,6 +381,8 @@ raids:
             damage: 4.0
             custom-name: "&8Beschwörung"
             use-equipment: true
+            abilities:
+              - "SpeedBoost"
 
     rewards:
       oraxen-items:
@@ -372,7 +421,7 @@ raids:
             use-equipment: true
 
       wave2:
-        name: "&eWelle 2 - Diener"
+        name: "&eWelle 2 - Elite Diener"
         delay-after: 8
         mobs:
           vindicator:
@@ -382,6 +431,9 @@ raids:
             damage: 10.0
             custom-name: "&cDiener"
             use-equipment: true
+            abilities:
+              - "SpeedBoost"
+              - "Knockback"
 
           pillager:
             type: pillager
@@ -402,6 +454,9 @@ raids:
             damage: 12.0
             custom-name: "&5Magier"
             use-equipment: false
+            abilities:
+              - "Teleport"
+              - "Invisibility"
 
           vex:
             type: vex
@@ -410,9 +465,11 @@ raids:
             damage: 6.0
             custom-name: "&7Vex"
             use-equipment: false
+            abilities:
+              - "Teleport"
 
       wave4:
-        name: "&4&lBOSS - Illager-Kommandant"
+        name: "&4&lBOSS - Illager-Bestie"
         delay-after: 0
         mobs:
           boss:
@@ -422,6 +479,10 @@ raids:
             damage: 20.0
             custom-name: "&4&lIllager-Bestie"
             use-equipment: false
+            abilities:
+              - "Regeneration"
+              - "Knockback"
+              - "SpeedBoost"
 
           rider:
             type: VINDICATOR
@@ -430,6 +491,9 @@ raids:
             damage: 15.0
             custom-name: "&cElite-Diener"
             use-equipment: true
+            abilities:
+              - "Regeneration"
+              - "Knockback"
 
     rewards:
       oraxen-items:

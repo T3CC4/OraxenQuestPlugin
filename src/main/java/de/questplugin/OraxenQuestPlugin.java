@@ -1,5 +1,8 @@
 package de.questplugin;
 
+import de.questplugin.mobs.abilities.AdvancedAbilities;
+import de.questplugin.mobs.api.ExampleAbilities;
+import de.questplugin.mobs.api.CustomMobAPI;
 import de.questplugin.utils.AEAPIHelper;
 import de.questplugin.utils.PluginLogger;
 import net.milkbowl.vault.economy.Economy;
@@ -24,11 +27,15 @@ public class OraxenQuestPlugin extends JavaPlugin {
     private CraftingManager craftingManager;
     private MobEquipmentManager mobEquipmentManager;
     private RaidManager raidManager;
+    private EliteMobManager eliteMobManager;
 
-    // Listener (für Cleanup)
+    // Custom Mobs API
+    private CustomMobAPI customMobAPI;
+
+    // Listener
     private BlockBreakListener blockBreakListener;
 
-    // Zentraler Logger mit debug-mode Support
+    // Logger
     private PluginLogger pluginLogger;
 
     private Economy economy = null;
@@ -37,7 +44,7 @@ public class OraxenQuestPlugin extends JavaPlugin {
     public void onEnable() {
         instance = this;
 
-        // Logger initialisieren (als erstes!)
+        // Logger initialisieren
         pluginLogger = new PluginLogger(this);
 
         if (!setupEconomy()) {
@@ -63,6 +70,12 @@ public class OraxenQuestPlugin extends JavaPlugin {
 
         // Config
         saveDefaultConfig();
+        saveResource("raids.yml", false);
+        saveResource("recipes.yml", false);
+
+        // Custom Mobs API initialisieren
+        customMobAPI = new CustomMobAPI(this);
+        registerDefaultAbilities();
 
         // Manager initialisieren
         dataManager = new DataManager(this);
@@ -73,6 +86,7 @@ public class OraxenQuestPlugin extends JavaPlugin {
         mobEquipmentManager = new MobEquipmentManager(this);
         questManager = new QuestManager(this);
         raidManager = new RaidManager(this);
+        eliteMobManager = new EliteMobManager(this);
 
         // Listener registrieren
         blockBreakListener = new BlockBreakListener(this);
@@ -97,11 +111,72 @@ public class OraxenQuestPlugin extends JavaPlugin {
         questManager.startQuestTimer();
 
         pluginLogger.info("OraxenQuestPlugin erfolgreich gestartet!");
+        pluginLogger.info("✓ Elite-Mobs System aktiv!");
+        pluginLogger.info("✓ " + getRegisteredAbilitiesCount() + " Abilities registriert");
 
-        // Debug-Mode Status
         if (getConfig().getBoolean("debug-mode", false)) {
             pluginLogger.info("⚠ Debug-Mode ist AKTIV - Viele Logs werden produziert!");
         }
+    }
+
+    /**
+     * Registriert Standard-Abilities
+     */
+    private void registerDefaultAbilities() {
+        var abilityManager = customMobAPI.getAbilityManager();
+
+        // Registriere alle Standard-Abilities
+        abilityManager.registerAbility("Teleport", new ExampleAbilities.TeleportAbility());
+        abilityManager.registerAbility("Regeneration", new ExampleAbilities.RegenerationAbility());
+        abilityManager.registerAbility("SpeedBoost", new ExampleAbilities.SpeedBoostAbility());
+        abilityManager.registerAbility("Knockback", new ExampleAbilities.KnockbackAbility());
+        abilityManager.registerAbility("Invisibility", new ExampleAbilities.InvisibilityAbility());
+
+        // OFFENSIVE
+        abilityManager.registerAbility("Fireball", new AdvancedAbilities.FireballAbility());
+        abilityManager.registerAbility("Lightning", new AdvancedAbilities.LightningAbility());
+        abilityManager.registerAbility("Explosion", new AdvancedAbilities.ExplosionAbility());
+        abilityManager.registerAbility("ArrowRain", new AdvancedAbilities.ArrowRainAbility());
+        abilityManager.registerAbility("Poison", new AdvancedAbilities.PoisonAbility());
+
+// DEFENSIVE
+        abilityManager.registerAbility("Shield", new AdvancedAbilities.ShieldAbility());
+        abilityManager.registerAbility("Heal", new AdvancedAbilities.HealAbility());
+        abilityManager.registerAbility("Absorb", new AdvancedAbilities.AbsorbAbility());
+        abilityManager.registerAbility("Thorns", new AdvancedAbilities.ThornsAbility());
+
+// CROWD CONTROL
+        abilityManager.registerAbility("Freeze", new AdvancedAbilities.FreezeAbility());
+        abilityManager.registerAbility("Web", new AdvancedAbilities.WebAbility());
+        abilityManager.registerAbility("Blind", new AdvancedAbilities.BlindAbility());
+        abilityManager.registerAbility("Weakness", new AdvancedAbilities.WeaknessAbility());
+        abilityManager.registerAbility("Slowness", new AdvancedAbilities.SlownessAbility());
+
+// SUMMON
+        abilityManager.registerAbility("SummonZombies", new AdvancedAbilities.SummonZombiesAbility());
+        abilityManager.registerAbility("SummonSkeletons", new AdvancedAbilities.SummonSkeletonsAbility());
+        abilityManager.registerAbility("SummonVex", new AdvancedAbilities.SummonVexAbility());
+
+// SPECIAL
+        abilityManager.registerAbility("Leap", new AdvancedAbilities.LeapAbility());
+        abilityManager.registerAbility("Pull", new AdvancedAbilities.PullAbility());
+        abilityManager.registerAbility("Swap", new AdvancedAbilities.SwapAbility());
+        abilityManager.registerAbility("Clone", new AdvancedAbilities.CloneAbility());
+        abilityManager.registerAbility("Meteor", new AdvancedAbilities.MeteorAbility());
+
+        pluginLogger.debug("Standard-Abilities registriert:");
+        pluginLogger.debug("  - Teleport (10s Cooldown)");
+        pluginLogger.debug("  - Regeneration (15s Cooldown)");
+        pluginLogger.debug("  - SpeedBoost (20s Cooldown)");
+        pluginLogger.debug("  - Knockback (8s Cooldown)");
+        pluginLogger.debug("  - Invisibility (30s Cooldown)");
+    }
+
+    /**
+     * Gibt Anzahl registrierter Abilities zurück
+     */
+    private int getRegisteredAbilitiesCount() {
+        return customMobAPI.getAbilityManager().getRegisteredAbilities().size();
     }
 
     @Override
@@ -116,6 +191,16 @@ public class OraxenQuestPlugin extends JavaPlugin {
             raidManager.shutdown();
         }
 
+        // Stoppe Elite-Mobs
+        if (eliteMobManager != null) {
+            eliteMobManager.shutdown();
+        }
+
+        // Stoppe Custom Mobs API
+        if (customMobAPI != null) {
+            customMobAPI.shutdown();
+        }
+
         // Stoppe alle Tasks
         if (questManager != null) {
             questManager.shutdown();
@@ -126,13 +211,13 @@ public class OraxenQuestPlugin extends JavaPlugin {
             blockBreakListener.shutdown();
         }
 
-        // Speichere Daten (synchron beim Shutdown!)
+        // Speichere Daten
         if (chestManager != null) {
             chestManager.saveData();
         }
 
         if (dataManager != null) {
-            dataManager.save(); // Synchron beim Shutdown
+            dataManager.save();
         }
 
         pluginLogger.info("OraxenQuestPlugin deaktiviert!");
@@ -192,23 +277,22 @@ public class OraxenQuestPlugin extends JavaPlugin {
         return raidManager;
     }
 
-    /**
-     * Holt Vault Economy (kann null sein!)
-     */
+    public EliteMobManager getEliteMobManager() {
+        return eliteMobManager;
+    }
+
+    public CustomMobAPI getCustomMobAPI() {
+        return customMobAPI;
+    }
+
     public Economy getEconomy() {
         return economy;
     }
 
-    /**
-     * Prüft ob Vault Economy verfügbar ist
-     */
     public boolean hasEconomy() {
         return economy != null;
     }
 
-    /**
-     * Zentraler Logger mit debug-mode Support
-     */
     public PluginLogger getPluginLogger() {
         return pluginLogger;
     }

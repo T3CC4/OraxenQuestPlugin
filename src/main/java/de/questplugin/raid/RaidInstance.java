@@ -2,6 +2,9 @@ package de.questplugin.raid;
 
 import de.questplugin.OraxenQuestPlugin;
 import de.questplugin.managers.MobEquipmentManager;
+import de.questplugin.mobs.api.CustomMob;
+import de.questplugin.mobs.api.CustomMobAPI;
+import de.questplugin.mobs.api.CustomMobBuilder;
 import de.questplugin.utils.MobHelper;
 import org.bukkit.*;
 import org.bukkit.attribute.Attribute;
@@ -17,12 +20,13 @@ import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
- * Aktive Raid-Instanz mit MobHelper für Equipment
+ * Aktive Raid-Instanz mit Multiplayer & dynamischer Schwierigkeit
  *
  * FEATURES:
+ * - Multiplayer-Raid (kein Spectator)
+ * - Dynamische Schwierigkeit nach Spieleranzahl
+ * - Bessere Belohnungen bei mehr Spielern
  * - BossBar mit Mob-Counter
- * - Spectator-System (andere Spieler sehen/hören alles, kriegen aber keine Drops)
- * - Phasen-Tracking
  */
 public class RaidInstance {
 
@@ -30,37 +34,38 @@ public class RaidInstance {
     private final RaidConfig config;
     private final Player player;
     private final Location spawnLocation;
+    private final CustomMobAPI mobAPI;
 
     private BossBar bossBar;
     private RaidState state;
     private int currentWave;
     private final Set<UUID> aliveMobs = new HashSet<>();
+    private final Set<UUID> customMobs = new HashSet<>();
+
     private BukkitTask currentTask;
 
-    // SPECTATOR-SYSTEM
-    private final Set<UUID> spectators = new HashSet<>();
-    private static final int SPECTATOR_RADIUS = 50; // Blöcke
+    // MULTIPLAYER-SYSTEM
+    private final Set<UUID> participants = new HashSet<>();
+    private static final int PARTICIPATION_RADIUS = 50;
+    private double difficultyMultiplier = 1.0;
 
     public RaidInstance(RaidConfig config, Player player, OraxenQuestPlugin plugin) {
         this.plugin = plugin;
         this.config = config;
         this.player = player;
         this.spawnLocation = player.getLocation().clone();
+        this.mobAPI = plugin.getCustomMobAPI();
         this.state = RaidState.PREPARING;
         this.currentWave = 0;
+
+        participants.add(player.getUniqueId());
     }
 
-    /**
-     * Startet den Raid
-     */
     public void start() {
         createBossBar();
         startPreparation();
     }
 
-    /**
-     * Stoppt den Raid vorzeitig
-     */
     public void stop() {
         cancel("Manuell gestoppt");
     }
@@ -78,10 +83,10 @@ public class RaidInstance {
         int prepTime = config.getPreparationTime();
 
         player.sendMessage(ChatColor.GOLD + "━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        player.sendMessage(ChatColor.translateAlternateColorCodes('&',
-                config.getDisplayName()));
+        player.sendMessage(ChatColor.translateAlternateColorCodes('&', config.getDisplayName()));
         player.sendMessage(ChatColor.YELLOW + "Vorbereitung: " + prepTime + " Sekunden");
         player.sendMessage(ChatColor.GRAY + "Wellen: " + config.getWaves().size());
+        player.sendMessage(ChatColor.AQUA + "Andere Spieler können beitreten!");
         player.sendMessage(ChatColor.GOLD + "━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
         player.playSound(player.getLocation(), Sound.ENTITY_ENDER_DRAGON_GROWL, 1.0f, 1.0f);
@@ -95,30 +100,48 @@ public class RaidInstance {
             }
 
             countdown[0]--;
-
-            // BossBar Update
             double progress = (double) countdown[0] / prepTime;
             bossBar.setProgress(Math.max(0, Math.min(1, progress)));
-            bossBar.setTitle(ChatColor.YELLOW + "Vorbereitung: " + countdown[0] + "s");
 
-            // Spectators updaten
-            updateSpectators();
+            updateParticipants();
 
-            // Sound bei 10, 5, 3, 2, 1
+            String title = ChatColor.YELLOW + "Vorbereitung: " + countdown[0] + "s " +
+                    ChatColor.GRAY + "[" + ChatColor.GREEN + participants.size() +
+                    ChatColor.GRAY + " Spieler]";
+            bossBar.setTitle(title);
+
             if (countdown[0] <= 10 && countdown[0] >= 1) {
-                // Sound für Hauptspieler
-                player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_HAT, 1.0f, 1.5f);
-
-                // Sound für Spectators
-                playSpectatorSound(Sound.BLOCK_NOTE_BLOCK_HAT, 0.5f, 1.5f);
+                playParticipantSound(Sound.BLOCK_NOTE_BLOCK_HAT, 1.0f, 1.5f);
             }
 
             if (countdown[0] <= 0) {
                 currentTask.cancel();
+                calculateDifficulty();
                 startNextWave();
             }
 
         }, 0L, 20L);
+    }
+
+    /**
+     * Berechnet Schwierigkeitsmultiplikator basierend auf Spieleranzahl
+     */
+    private void calculateDifficulty() {
+        int playerCount = participants.size();
+
+        // Formel: 1.0 + (Spieler - 1) * 0.4
+        // 1 Spieler = 1.0x
+        // 2 Spieler = 1.4x
+        // 3 Spieler = 1.8x
+        // 4 Spieler = 2.2x
+        difficultyMultiplier = 1.0 + ((playerCount - 1) * 0.4);
+
+        plugin.getPluginLogger().info("Schwierigkeit: " + playerCount + " Spieler = " +
+                String.format("%.1f", difficultyMultiplier) + "x");
+
+        sendParticipantMessage(ChatColor.YELLOW + "Schwierigkeit: " +
+                ChatColor.RED + String.format("%.1f", difficultyMultiplier) + "x " +
+                ChatColor.GRAY + "(" + playerCount + " Spieler)");
     }
 
     private void startNextWave() {
@@ -133,8 +156,8 @@ public class RaidInstance {
         WaveConfig wave = config.getWaves().get(currentWave - 1);
 
         plugin.getPluginLogger().debug("=== Start Wave " + currentWave + " ===");
-        plugin.getPluginLogger().debug("Wave Name: " + wave.getDisplayName());
-        plugin.getPluginLogger().debug("Mob Types: " + wave.getMobs().size());
+        plugin.getPluginLogger().debug("Spieler: " + participants.size());
+        plugin.getPluginLogger().debug("Schwierigkeit: " + difficultyMultiplier + "x");
 
         String title = ChatColor.translateAlternateColorCodes('&',
                 config.getDisplayName() + " &7- " + wave.getDisplayName());
@@ -142,82 +165,70 @@ public class RaidInstance {
         bossBar.setColor(BarColor.RED);
         bossBar.setProgress(1.0);
 
-        player.sendMessage("");
-        player.sendMessage(ChatColor.translateAlternateColorCodes('&', wave.getDisplayName()));
-        player.playSound(player.getLocation(), Sound.ENTITY_WITHER_SPAWN, 1.0f, 1.0f);
-
-        // Spectator-Effekte
-        playSpectatorSound(Sound.ENTITY_WITHER_SPAWN, 0.7f, 1.0f);
-        sendSpectatorMessage(ChatColor.translateAlternateColorCodes('&', wave.getDisplayName()));
+        sendParticipantMessage("");
+        sendParticipantMessage(ChatColor.translateAlternateColorCodes('&', wave.getDisplayName()));
+        playParticipantSound(Sound.ENTITY_WITHER_SPAWN, 1.0f, 1.0f);
 
         spawnWave(wave);
         startWaveMonitoring(wave);
     }
 
     private void spawnWave(WaveConfig wave) {
-        double difficultyMultiplier = config.getDifficultyMultiplier();
+        double totalMultiplier = config.getDifficultyMultiplier() * difficultyMultiplier;
         int spawnRadius = config.getSpawnRadius();
 
         plugin.getPluginLogger().debug("=== Spawn Wave " + currentWave + " ===");
-        plugin.getPluginLogger().debug("Mob-Typen: " + wave.getMobs().size());
+        plugin.getPluginLogger().debug("Multiplikator: " + totalMultiplier + "x");
 
         for (WaveConfig.MobSpawn mobSpawn : wave.getMobs()) {
-            plugin.getPluginLogger().debug("Spawne " + mobSpawn.getAmount() + "x " + mobSpawn.getType());
+            // Erhöhe Mob-Anzahl basierend auf Spieleranzahl
+            int baseAmount = mobSpawn.getAmount();
+            int scaledAmount = (int) Math.ceil(baseAmount * Math.sqrt(participants.size()));
 
-            for (int i = 0; i < mobSpawn.getAmount(); i++) {
+            plugin.getPluginLogger().debug("Spawne " + scaledAmount + "x " + mobSpawn.getType() +
+                    " (Base: " + baseAmount + ")");
+
+            for (int i = 0; i < scaledAmount; i++) {
                 try {
                     Location loc = getRandomSpawnLocation(spawnRadius);
-
-                    plugin.getPluginLogger().debug("  Spawn-Location: " +
-                            loc.getBlockX() + ", " + loc.getBlockY() + ", " + loc.getBlockZ());
 
                     if (loc.getWorld() == null) {
                         plugin.getLogger().severe("Spawn-Location hat keine World!");
                         continue;
                     }
 
-                    // Spawne Entity
-                    Entity entity = loc.getWorld().spawnEntity(loc, mobSpawn.getType());
+                    CustomMobBuilder builder = mobAPI.createMob(mobSpawn.getType())
+                            .at(loc)
+                            .withLevel((int) totalMultiplier)
+                            .withHealth(mobSpawn.getHealth() * totalMultiplier)
+                            .withDamage(mobSpawn.getDamage() * totalMultiplier);
 
-                    if (entity instanceof LivingEntity) {
-                        LivingEntity mob = (LivingEntity) entity;
-                        aliveMobs.add(mob.getUniqueId());
-
-                        // Health
-                        double health = mobSpawn.getHealth() * difficultyMultiplier;
-                        if (mob.getAttribute(Attribute.MAX_HEALTH) != null) {
-                            mob.getAttribute(Attribute.MAX_HEALTH).setBaseValue(health);
-                            mob.setHealth(health);
-                        }
-
-                        // Damage
-                        if (mob.getAttribute(Attribute.ATTACK_DAMAGE) != null) {
-                            double damage = mobSpawn.getDamage() * difficultyMultiplier;
-                            mob.getAttribute(Attribute.ATTACK_DAMAGE).setBaseValue(damage);
-                        }
-
-                        // Custom Name
-                        if (mobSpawn.getCustomName() != null) {
-                            mob.setCustomName(ChatColor.translateAlternateColorCodes('&',
-                                    mobSpawn.getCustomName()));
-                            mob.setCustomNameVisible(true);
-                        }
-
-                        // Equipment
-                        if (mobSpawn.hasEquipment()) {
-                            applyEquipment(mob);
-                        }
-
-                        mob.setRemoveWhenFarAway(false);
-                        mob.setPersistent(true);
-
-                        plugin.getPluginLogger().debug("  ✓ Mob gespawnt: " + mob.getType() +
-                                " (UUID: " + mob.getUniqueId() + ")");
+                    if (mobSpawn.getCustomName() != null) {
+                        builder.withName(ChatColor.translateAlternateColorCodes('&',
+                                mobSpawn.getCustomName()));
                     }
 
+                    if (mobSpawn.hasAbilities()) {
+                        for (String abilityId : mobSpawn.getAbilities()) {
+                            builder.withAbility(abilityId);
+                        }
+                    }
+
+                    CustomMob customMob = builder.spawn();
+                    LivingEntity entity = customMob.getEntity();
+
+                    aliveMobs.add(entity.getUniqueId());
+                    customMobs.add(entity.getUniqueId());
+
+                    if (mobSpawn.hasEquipment()) {
+                        applyEquipment(entity);
+                    }
+
+                    entity.setRemoveWhenFarAway(false);
+                    entity.setPersistent(true);
+
                 } catch (Exception e) {
-                    plugin.getLogger().severe("Fehler beim Spawnen von " + mobSpawn.getType() +
-                            ": " + e.getMessage());
+                    plugin.getLogger().severe("Fehler beim Spawnen: " + e.getMessage());
                     e.printStackTrace();
                 }
             }
@@ -225,7 +236,68 @@ public class RaidInstance {
 
         plugin.getPluginLogger().info("Welle " + currentWave + ": " +
                 aliveMobs.size() + " Mobs gespawnt");
-        plugin.getPluginLogger().debug("==========================");
+    }
+
+    private Location getRandomSpawnLocation(int radius) {
+        ThreadLocalRandom random = ThreadLocalRandom.current();
+        double angle = random.nextDouble() * 2 * Math.PI;
+        double distance = random.nextDouble(radius / 2.0, radius);
+
+        double x = spawnLocation.getX() + distance * Math.cos(angle);
+        double z = spawnLocation.getZ() + distance * Math.sin(angle);
+
+        World world = spawnLocation.getWorld();
+        int blockX = (int) Math.floor(x);
+        int blockZ = (int) Math.floor(z);
+
+        int startY;
+        if (world.getEnvironment() == World.Environment.NETHER) {
+            startY = Math.max(1, Math.min(120, spawnLocation.getBlockY()));
+        } else {
+            startY = world.getHighestBlockYAt(blockX, blockZ) + 1;
+        }
+
+        Location safeLoc = findSafeSpawnPoint(world, blockX, startY, blockZ);
+
+        if (safeLoc != null) {
+            return safeLoc;
+        }
+
+        return spawnLocation.clone().add(
+                random.nextDouble(-5, 5),
+                0,
+                random.nextDouble(-5, 5)
+        );
+    }
+
+    private Location findSafeSpawnPoint(World world, int x, int startY, int z) {
+        for (int y = startY; y > Math.max(1, startY - 20); y--) {
+            Location checkLoc = new Location(world, x, y, z);
+            Material below = checkLoc.clone().subtract(0, 1, 0).getBlock().getType();
+            Material at = checkLoc.getBlock().getType();
+            Material above = checkLoc.clone().add(0, 1, 0).getBlock().getType();
+
+            boolean solidBelow = below.isSolid() && !below.isInteractable();
+            boolean airAt = at.isAir() || !at.isSolid();
+            boolean airAbove = above.isAir() || !above.isSolid();
+            boolean safeSurface = !isHazardous(below) && !isHazardous(at) && !isHazardous(above);
+
+            if (solidBelow && airAt && airAbove && safeSurface) {
+                return checkLoc.add(0.5, 0, 0.5);
+            }
+        }
+
+        return null;
+    }
+
+    private boolean isHazardous(Material material) {
+        return material == Material.LAVA ||
+                material == Material.FIRE ||
+                material == Material.SOUL_FIRE ||
+                material == Material.MAGMA_BLOCK ||
+                material == Material.WITHER_ROSE ||
+                material == Material.SWEET_BERRY_BUSH ||
+                material == Material.CACTUS;
     }
 
     private void applyEquipment(LivingEntity mob) {
@@ -234,7 +306,6 @@ public class RaidInstance {
                 equipmentManager.getEquipment(mob.getType());
 
         if (equipment.isEmpty()) {
-            plugin.getPluginLogger().debug("Kein Equipment für " + mob.getType());
             return;
         }
 
@@ -242,7 +313,6 @@ public class RaidInstance {
         if (entityEquipment == null) return;
 
         ThreadLocalRandom random = ThreadLocalRandom.current();
-        int appliedItems = 0;
 
         for (MobEquipmentManager.EquipmentEntry entry : equipment) {
             double roll = random.nextDouble() * 100;
@@ -277,20 +347,8 @@ public class RaidInstance {
                             entityEquipment.setBootsDropChance(entry.getDropChance());
                             break;
                     }
-
-                    appliedItems++;
-
-                    plugin.getPluginLogger().debug("Equipment: " + mob.getType() +
-                            " → " + entry.getSlot().getDisplayName() +
-                            " = " + entry.getOraxenItemId() +
-                            " (Drop: " + (entry.getDropChance() * 100) + "%)");
                 }
             }
-        }
-
-        if (appliedItems > 0) {
-            plugin.getPluginLogger().debug("Mob " + mob.getType() +
-                    ": " + appliedItems + " Equipment-Items");
         }
     }
 
@@ -313,39 +371,31 @@ public class RaidInstance {
         }
     }
 
-    /**
-     * FIX: BossBar zeigt jetzt Mob-Counter
-     */
     private void startWaveMonitoring(WaveConfig wave) {
-        int totalMobs = wave.getTotalMobCount();
+        int totalMobs = aliveMobs.size();
 
         currentTask = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
             if (!player.isOnline()) {
-                cancel("Spieler offline!");
+                cancel("Host offline!");
                 return;
             }
 
-            // Tote Mobs entfernen
             aliveMobs.removeIf(uuid -> {
                 Entity entity = Bukkit.getEntity(uuid);
                 return entity == null || entity.isDead();
             });
 
-            // BossBar Update mit Counter
             double progress = (double) aliveMobs.size() / totalMobs;
             bossBar.setProgress(Math.max(0, Math.min(1, progress)));
 
-            // UPDATE: Zeige verbleibende Mobs
             String title = ChatColor.translateAlternateColorCodes('&',
                     config.getDisplayName() + " &7- " + wave.getDisplayName());
             bossBar.setTitle(title + ChatColor.GRAY + " [" +
                     ChatColor.RED + aliveMobs.size() + ChatColor.GRAY + "/" +
                     ChatColor.WHITE + totalMobs + ChatColor.GRAY + "]");
 
-            // Spectators updaten
-            updateSpectators();
+            updateParticipants();
 
-            // Welle abgeschlossen?
             if (aliveMobs.isEmpty()) {
                 currentTask.cancel();
                 onWaveComplete(wave);
@@ -355,20 +405,14 @@ public class RaidInstance {
     }
 
     private void onWaveComplete(WaveConfig wave) {
-        player.sendMessage(ChatColor.GREEN + "✓ " + wave.getDisplayName() +
-                " abgeschlossen!");
-        player.playSound(player.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 1.0f, 1.0f);
-
-        // Spectator-Effekte
-        playSpectatorSound(Sound.UI_TOAST_CHALLENGE_COMPLETE, 0.7f, 1.0f);
-        sendSpectatorMessage(ChatColor.GREEN + "✓ " + wave.getDisplayName() + " abgeschlossen!");
+        sendParticipantMessage(ChatColor.GREEN + "✓ " + wave.getDisplayName() + " abgeschlossen!");
+        playParticipantSound(Sound.UI_TOAST_CHALLENGE_COMPLETE, 1.0f, 1.0f);
 
         if (currentWave >= config.getWaves().size()) {
             complete();
             return;
         }
 
-        // Delay vor nächster Welle
         int delay = wave.getDelayAfterWave();
         if (delay > 0) {
             bossBar.setTitle(ChatColor.YELLOW + "Nächste Welle in " + delay + "s");
@@ -384,23 +428,25 @@ public class RaidInstance {
     private void complete() {
         state = RaidState.COMPLETED;
 
-        player.sendMessage("");
-        player.sendMessage(ChatColor.GOLD + "━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        player.sendMessage(ChatColor.GREEN + "✔ RAID ABGESCHLOSSEN!");
-        player.sendMessage(ChatColor.translateAlternateColorCodes('&', config.getDisplayName()));
-        player.sendMessage(ChatColor.GOLD + "━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        sendParticipantMessage("");
+        sendParticipantMessage(ChatColor.GOLD + "━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        sendParticipantMessage(ChatColor.GREEN + "✔ RAID ABGESCHLOSSEN!");
+        sendParticipantMessage(ChatColor.translateAlternateColorCodes('&', config.getDisplayName()));
+        sendParticipantMessage(ChatColor.AQUA + "Teilnehmer: " + participants.size());
+        sendParticipantMessage(ChatColor.YELLOW + "Schwierigkeit: " +
+                String.format("%.1f", difficultyMultiplier) + "x");
+        sendParticipantMessage(ChatColor.GOLD + "━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
-        player.playSound(player.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 1.0f, 0.8f);
+        playParticipantSound(Sound.UI_TOAST_CHALLENGE_COMPLETE, 1.0f, 0.8f);
 
-        // Spectator-Finale
-        playSpectatorSound(Sound.UI_TOAST_CHALLENGE_COMPLETE, 1.0f, 0.8f);
-        sendSpectatorMessage(ChatColor.GOLD + "━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        sendSpectatorMessage(ChatColor.GREEN + "✔ RAID ABGESCHLOSSEN!");
-        sendSpectatorMessage(ChatColor.translateAlternateColorCodes('&', config.getDisplayName()));
-        sendSpectatorMessage(ChatColor.GOLD + "━━━━━━━━━━━━━━━━━━━━━━━━━━");
-
-        // Belohnungen (nur für Hauptspieler!)
-        config.getRewards().giveRewards(player, plugin);
+        // Belohnungen für alle Teilnehmer mit Spieleranzahl
+        int playerCount = participants.size();
+        for (UUID uuid : participants) {
+            Player p = Bukkit.getPlayer(uuid);
+            if (p != null && p.isOnline()) {
+                config.getRewards().giveRewards(p, plugin, difficultyMultiplier, playerCount);
+            }
+        }
 
         cleanup();
     }
@@ -408,11 +454,8 @@ public class RaidInstance {
     public void cancel(String reason) {
         state = RaidState.CANCELLED;
 
-        player.sendMessage(ChatColor.RED + "Raid abgebrochen: " + reason);
-        player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
-
-        // Spectator-Info
-        sendSpectatorMessage(ChatColor.RED + "Raid abgebrochen: " + reason);
+        sendParticipantMessage(ChatColor.RED + "Raid abgebrochen: " + reason);
+        playParticipantSound(Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
 
         cleanup();
     }
@@ -428,89 +471,59 @@ public class RaidInstance {
             bossBar = null;
         }
 
-        // Raid-Mobs entfernen
         for (UUID uuid : aliveMobs) {
             Entity entity = Bukkit.getEntity(uuid);
             if (entity != null) {
+                if (customMobs.contains(uuid)) {
+                    mobAPI.removeCustomMob(uuid);
+                }
                 entity.remove();
             }
         }
         aliveMobs.clear();
+        customMobs.clear();
+        participants.clear();
 
-        spectators.clear();
         plugin.getRaidManager().removeRaid(player.getUniqueId());
-    }
-
-    private Location getRandomSpawnLocation(int radius) {
-        ThreadLocalRandom random = ThreadLocalRandom.current();
-        double angle = random.nextDouble() * 2 * Math.PI;
-        double distance = random.nextDouble(radius / 2.0, radius);
-
-        double x = spawnLocation.getX() + distance * Math.cos(angle);
-        double z = spawnLocation.getZ() + distance * Math.sin(angle);
-
-        World world = spawnLocation.getWorld();
-        int blockX = (int) Math.floor(x);
-        int blockZ = (int) Math.floor(z);
-
-        int y = world.getHighestBlockYAt(blockX, blockZ) + 1;
-
-        if (y < world.getMinHeight()) {
-            y = world.getMinHeight() + 1;
-        }
-
-        if (y > world.getMaxHeight() - 2) {
-            y = world.getMaxHeight() - 2;
-        }
-
-        return new Location(world, x, y, z);
     }
 
     private boolean isNearSpawnLocation() {
         return player.getLocation().distance(spawnLocation) <= 50;
     }
 
-    // ==================== SPECTATOR-SYSTEM ====================
+    // ==================== MULTIPLAYER-SYSTEM ====================
 
-    /**
-     * Aktualisiert Spectator-Liste (Spieler im Umkreis)
-     */
-    private void updateSpectators() {
-        Set<UUID> newSpectators = new HashSet<>();
+    private void updateParticipants() {
+        Set<UUID> newParticipants = new HashSet<>();
+        newParticipants.add(player.getUniqueId()); // Host immer dabei
 
         for (Player p : Bukkit.getOnlinePlayers()) {
-            // Nicht der Hauptspieler
             if (p.getUniqueId().equals(player.getUniqueId())) {
                 continue;
             }
 
-            // In selber Welt
             if (!p.getWorld().equals(spawnLocation.getWorld())) {
                 continue;
             }
 
-            // Im Umkreis
-            if (p.getLocation().distance(spawnLocation) <= SPECTATOR_RADIUS) {
-                newSpectators.add(p.getUniqueId());
+            if (p.getLocation().distance(spawnLocation) <= PARTICIPATION_RADIUS) {
+                newParticipants.add(p.getUniqueId());
 
-                // Neu hinzugefügt?
-                if (!spectators.contains(p.getUniqueId())) {
-                    onSpectatorJoin(p);
+                if (!participants.contains(p.getUniqueId())) {
+                    onParticipantJoin(p);
                 }
 
-                // BossBar zeigen
                 if (bossBar != null && !bossBar.getPlayers().contains(p)) {
                     bossBar.addPlayer(p);
                 }
             }
         }
 
-        // Entfernte Spectators
-        for (UUID uuid : spectators) {
-            if (!newSpectators.contains(uuid)) {
+        for (UUID uuid : participants) {
+            if (!newParticipants.contains(uuid)) {
                 Player p = Bukkit.getPlayer(uuid);
-                if (p != null) {
-                    onSpectatorLeave(p);
+                if (p != null && !uuid.equals(player.getUniqueId())) {
+                    onParticipantLeave(p);
                     if (bossBar != null) {
                         bossBar.removePlayer(p);
                     }
@@ -518,29 +531,30 @@ public class RaidInstance {
             }
         }
 
-        spectators.clear();
-        spectators.addAll(newSpectators);
+        participants.clear();
+        participants.addAll(newParticipants);
     }
 
-    private void onSpectatorJoin(Player spectator) {
-        spectator.sendMessage(ChatColor.GRAY + "━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        spectator.sendMessage(ChatColor.YELLOW + "Du beobachtest einen Raid!");
-        spectator.sendMessage(ChatColor.GRAY + "Spieler: " + ChatColor.WHITE + player.getName());
-        spectator.sendMessage(ChatColor.translateAlternateColorCodes('&', config.getDisplayName()));
-        spectator.sendMessage(ChatColor.GRAY + "Du erhältst keine Drops, aber siehst alles!");
-        spectator.sendMessage(ChatColor.GRAY + "━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        spectator.playSound(spectator.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.5f, 1.2f);
+    private void onParticipantJoin(Player participant) {
+        participant.sendMessage(ChatColor.GOLD + "━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        participant.sendMessage(ChatColor.GREEN + "Du nimmst am Raid teil!");
+        participant.sendMessage(ChatColor.GRAY + "Host: " + ChatColor.WHITE + player.getName());
+        participant.sendMessage(ChatColor.translateAlternateColorCodes('&', config.getDisplayName()));
+        participant.sendMessage(ChatColor.YELLOW + "Die Schwierigkeit wird erhöht!");
+        participant.sendMessage(ChatColor.AQUA + "Du erhältst auch Belohnungen!");
+        participant.sendMessage(ChatColor.GOLD + "━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        participant.playSound(participant.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 1.2f);
+
+        sendParticipantMessage(ChatColor.GREEN + participant.getName() + " nimmt am Raid teil!");
     }
 
-    private void onSpectatorLeave(Player spectator) {
-        spectator.sendMessage(ChatColor.GRAY + "Du bist zu weit vom Raid entfernt!");
+    private void onParticipantLeave(Player participant) {
+        participant.sendMessage(ChatColor.RED + "Du bist zu weit vom Raid entfernt!");
+        sendParticipantMessage(ChatColor.RED + participant.getName() + " hat den Raid verlassen!");
     }
 
-    /**
-     * Spielt Sound für alle Spectators
-     */
-    private void playSpectatorSound(Sound sound, float volume, float pitch) {
-        for (UUID uuid : spectators) {
+    private void playParticipantSound(Sound sound, float volume, float pitch) {
+        for (UUID uuid : participants) {
             Player p = Bukkit.getPlayer(uuid);
             if (p != null && p.isOnline()) {
                 p.playSound(p.getLocation(), sound, volume, pitch);
@@ -548,11 +562,8 @@ public class RaidInstance {
         }
     }
 
-    /**
-     * Sendet Message an alle Spectators
-     */
-    private void sendSpectatorMessage(String message) {
-        for (UUID uuid : spectators) {
+    private void sendParticipantMessage(String message) {
+        for (UUID uuid : participants) {
             Player p = Bukkit.getPlayer(uuid);
             if (p != null && p.isOnline()) {
                 p.sendMessage(message);
@@ -560,12 +571,9 @@ public class RaidInstance {
         }
     }
 
-    /**
-     * Gibt alle aktuellen Spectators zurück
-     */
-    public Set<Player> getSpectators() {
+    public Set<Player> getParticipants() {
         Set<Player> players = new HashSet<>();
-        for (UUID uuid : spectators) {
+        for (UUID uuid : participants) {
             Player p = Bukkit.getPlayer(uuid);
             if (p != null) {
                 players.add(p);
@@ -581,7 +589,8 @@ public class RaidInstance {
     public RaidState getState() { return state; }
     public int getCurrentWave() { return currentWave; }
     public int getAliveMobCount() { return aliveMobs.size(); }
-    public int getSpectatorCount() { return spectators.size(); }
+    public int getParticipantCount() { return participants.size(); }
+    public double getDifficultyMultiplier() { return difficultyMultiplier; }
 
     public enum RaidState {
         PREPARING,

@@ -8,15 +8,14 @@ import org.bukkit.entity.EntityType;
 import java.util.*;
 
 /**
- * Konfiguration einer Raid-Welle
- * Nutzt MobHelper für case-insensitive Mob-Namen
+ * Konfiguration einer Raid-Welle mit Abilities Support
  */
 public class WaveConfig {
 
     private final int waveNumber;
     private final String displayName;
     private final List<MobSpawn> mobs;
-    private final int delayAfterWave; // Sekunden
+    private final int delayAfterWave;
 
     private WaveConfig(int waveNumber, String displayName, List<MobSpawn> mobs, int delayAfterWave) {
         this.waveNumber = waveNumber;
@@ -25,16 +24,12 @@ public class WaveConfig {
         this.delayAfterWave = delayAfterWave;
     }
 
-    /**
-     * Lädt WaveConfig aus ConfigurationSection
-     */
     public static WaveConfig load(String key, ConfigurationSection section, OraxenQuestPlugin plugin) {
         try {
             int waveNumber = Integer.parseInt(key.replaceAll("\\D+", ""));
             String displayName = section.getString("name", "Welle " + waveNumber);
             int delayAfterWave = section.getInt("delay-after", 5);
 
-            // Mobs laden
             List<MobSpawn> mobs = new ArrayList<>();
             ConfigurationSection mobsSection = section.getConfigurationSection("mobs");
 
@@ -65,8 +60,6 @@ public class WaveConfig {
         }
     }
 
-    // ==================== GETTER ====================
-
     public int getWaveNumber() {
         return waveNumber;
     }
@@ -83,15 +76,12 @@ public class WaveConfig {
         return delayAfterWave;
     }
 
-    /**
-     * Berechnet Gesamtzahl der Mobs in dieser Welle
-     */
     public int getTotalMobCount() {
         return mobs.stream().mapToInt(MobSpawn::getAmount).sum();
     }
 
     /**
-     * Mob-Spawn Datenklasse mit MobHelper
+     * Mob-Spawn mit Abilities Support
      */
     public static class MobSpawn {
         private final EntityType type;
@@ -100,15 +90,17 @@ public class WaveConfig {
         private final double damage;
         private final String customName;
         private final boolean hasEquipment;
+        private final List<String> abilities; // NEU: Abilities
 
         private MobSpawn(EntityType type, int amount, double health, double damage,
-                         String customName, boolean hasEquipment) {
+                         String customName, boolean hasEquipment, List<String> abilities) {
             this.type = type;
             this.amount = amount;
             this.health = health;
             this.damage = damage;
             this.customName = customName;
             this.hasEquipment = hasEquipment;
+            this.abilities = abilities != null ? abilities : new ArrayList<>();
         }
 
         public static MobSpawn load(ConfigurationSection section, OraxenQuestPlugin plugin) {
@@ -119,13 +111,11 @@ public class WaveConfig {
                     return null;
                 }
 
-                // CASE-INSENSITIVE mit MobHelper
                 EntityType type = MobHelper.parseConfigMob(typeStr);
 
                 if (type == null) {
                     plugin.getLogger().warning("Ungültiger Mob-Typ: '" + typeStr + "'");
                     plugin.getLogger().warning("  Nutze /quest mobs für gültige Mob-Namen");
-                    plugin.getLogger().warning("  Beispiel: ZOMBIE, zombie, Zombie (alle funktionieren)");
                     return null;
                 }
 
@@ -135,10 +125,14 @@ public class WaveConfig {
                 String customName = section.getString("custom-name");
                 boolean hasEquipment = section.getBoolean("use-equipment", false);
 
-                plugin.getPluginLogger().debug("Mob geladen: " + type +
-                        " (Original: '" + typeStr + "')");
+                // NEU: Abilities laden
+                List<String> abilities = section.getStringList("abilities");
 
-                return new MobSpawn(type, amount, health, damage, customName, hasEquipment);
+                plugin.getPluginLogger().debug("Mob geladen: " + type +
+                        " (Original: '" + typeStr + "')" +
+                        (abilities.isEmpty() ? "" : " mit " + abilities.size() + " Abilities"));
+
+                return new MobSpawn(type, amount, health, damage, customName, hasEquipment, abilities);
 
             } catch (Exception e) {
                 plugin.getLogger().severe("Fehler beim Laden von Mob: " + e.getMessage());
@@ -153,5 +147,7 @@ public class WaveConfig {
         public double getDamage() { return damage; }
         public String getCustomName() { return customName; }
         public boolean hasEquipment() { return hasEquipment; }
+        public List<String> getAbilities() { return abilities; }
+        public boolean hasAbilities() { return !abilities.isEmpty(); }
     }
 }

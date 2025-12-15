@@ -248,15 +248,6 @@ chest-loot:
       chance: 25.0
       min-amount: 1
       max-amount: 1
-      max-amount: 3
-
-  # Schiffswracks (Treasure)
-  shipwreck_treasure:
-    loot1:
-      oraxen-item: "ancient_compass"
-      chance: 25.0
-      min-amount: 1
-      max-amount: 1
 
   # Minen
   abandoned_mineshaft:

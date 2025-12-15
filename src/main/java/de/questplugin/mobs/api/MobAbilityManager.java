@@ -5,6 +5,7 @@ import org.bukkit.scheduler.BukkitTask;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Verwaltet alle Mob-Fähigkeiten
@@ -49,6 +50,20 @@ public class MobAbilityManager {
             e.printStackTrace();
             return null;
         }
+    }
+
+    /**
+     * Gibt alle registrierten Ability-IDs zurück
+     */
+    public Set<String> getRegisteredAbilities() {
+        return registeredAbilities.keySet();
+    }
+
+    /**
+     * Prüft ob eine Ability registriert ist
+     */
+    public boolean isRegistered(String id) {
+        return registeredAbilities.containsKey(id);
     }
 
     /**
