@@ -13,7 +13,7 @@ import org.bukkit.entity.Tameable;
 import org.bukkit.persistence.PersistentDataType;
 
 /**
- * Repräsentiert einen Custom Mob
+ * Repräsentiert einen Custom Mob mit Equipment-Support
  */
 public class CustomMob {
 
@@ -39,16 +39,12 @@ public class CustomMob {
         this.defendMode = DefendMode.PASSIVE;
         this.guardPosition = null;
 
-        // Markiere Entity als Custom Mob
-        // FIX: Nutze plugin.getName() statt String.valueOf(plugin)
-        // getName() gibt nur den Plugin-Namen zurück (ohne Version/Spaces)
         NamespacedKey key = new NamespacedKey(api.getPlugin().getName().toLowerCase(), "custom_mob");
         entity.getPersistentDataContainer().set(key, PersistentDataType.BYTE, (byte) 1);
     }
 
-    /**
-     * Setzt das Level des Mobs
-     */
+    // ==================== ATTRIBUTE ====================
+
     public CustomMob setLevel(int level) {
         this.level = level;
         updateAttributes();
@@ -59,9 +55,6 @@ public class CustomMob {
         return level;
     }
 
-    /**
-     * Setzt einen Custom Namen
-     */
     public CustomMob setCustomName(String name) {
         this.customName = name;
         entity.setCustomName(name);
@@ -73,18 +66,12 @@ public class CustomMob {
         return customName;
     }
 
-    /**
-     * Setzt die Gesundheit
-     */
     public CustomMob setHealth(double health) {
         entity.getAttribute(Attribute.MAX_HEALTH).setBaseValue(health);
         entity.setHealth(health);
         return this;
     }
 
-    /**
-     * Setzt den Schaden
-     */
     public CustomMob setDamage(double damage) {
         if (entity.getAttribute(Attribute.ATTACK_DAMAGE) != null) {
             entity.getAttribute(Attribute.ATTACK_DAMAGE).setBaseValue(damage);
@@ -92,18 +79,11 @@ public class CustomMob {
         return this;
     }
 
-    /**
-     * Setzt die Geschwindigkeit
-     */
     public CustomMob setSpeed(double speed) {
         entity.getAttribute(Attribute.MOVEMENT_SPEED).setBaseValue(speed);
         return this;
     }
 
-    /**
-     * Setzt die Größe des Mobs (Scale)
-     * @param scale Skalierungsfaktor (1.0 = normal, 2.0 = doppelt so groß, 0.5 = halb so groß)
-     */
     public CustomMob setScale(double scale) {
         if (entity.getAttribute(Attribute.SCALE) != null) {
             entity.getAttribute(Attribute.SCALE).setBaseValue(scale);
@@ -111,9 +91,6 @@ public class CustomMob {
         return this;
     }
 
-    /**
-     * Holt die aktuelle Größe
-     */
     public double getScale() {
         if (entity.getAttribute(Attribute.SCALE) != null) {
             return entity.getAttribute(Attribute.SCALE).getValue();
@@ -121,12 +98,142 @@ public class CustomMob {
         return 1.0;
     }
 
+    // ==================== EQUIPMENT SYSTEM ====================
+
     /**
-     * Setzt ein Entity zum Verteidigen (Spieler oder Mob)
-     * @param target Das zu verteidigende Entity
-     * @param radius Radius in dem verteidigt wird
-     * @param mode Defend-Modus (PASSIVE, AGGRESSIVE, etc.)
+     * Gibt das Equipment des Mobs zurück (falls vorhanden)
      */
+    public org.bukkit.inventory.EntityEquipment getEquipment() {
+        if (entity instanceof Mob) {
+            return entity.getEquipment();
+        }
+        return null;
+    }
+
+    /**
+     * Prüft ob dieser Mob Equipment tragen kann
+     */
+    public boolean canWearEquipment() {
+        return entity instanceof Mob && entity.getEquipment() != null;
+    }
+
+    /**
+     * Setzt Equipment in einem Slot
+     * @param slot Equipment-Slot
+     * @param item Das Item
+     * @param dropChance Drop-Chance (0.0 - 1.0)
+     * @return this für Chaining
+     */
+    public CustomMob setEquipment(de.questplugin.enums.MobEquipmentSlot slot,
+                                  org.bukkit.inventory.ItemStack item,
+                                  float dropChance) {
+        if (!canWearEquipment()) {
+            api.getPlugin().getPluginLogger().debug("Mob " + entity.getType() +
+                    " kann kein Equipment tragen!");
+            return this;
+        }
+
+        org.bukkit.inventory.EntityEquipment equipment = getEquipment();
+        if (equipment == null) return this;
+
+        switch (slot) {
+            case MAIN_HAND:
+                equipment.setItemInMainHand(item);
+                equipment.setItemInMainHandDropChance(dropChance);
+                break;
+            case OFF_HAND:
+                equipment.setItemInOffHand(item);
+                equipment.setItemInOffHandDropChance(dropChance);
+                break;
+            case HELMET:
+                equipment.setHelmet(item);
+                equipment.setHelmetDropChance(dropChance);
+                break;
+            case CHESTPLATE:
+                equipment.setChestplate(item);
+                equipment.setChestplateDropChance(dropChance);
+                break;
+            case LEGGINGS:
+                equipment.setLeggings(item);
+                equipment.setLeggingsDropChance(dropChance);
+                break;
+            case BOOTS:
+                equipment.setBoots(item);
+                equipment.setBootsDropChance(dropChance);
+                break;
+        }
+
+        api.getPlugin().getPluginLogger().debug("Equipment gesetzt: " + slot +
+                " → " + item.getType());
+        return this;
+    }
+
+    /**
+     * Setzt Equipment mit Standard-Drop-Chance (0%)
+     */
+    public CustomMob setEquipment(de.questplugin.enums.MobEquipmentSlot slot,
+                                  org.bukkit.inventory.ItemStack item) {
+        return setEquipment(slot, item, 0.0f);
+    }
+
+    /**
+     * Wendet Equipment-Config auf den Mob an
+     * @param equipmentManager Der Equipment-Manager
+     */
+    public CustomMob applyEquipmentConfig(de.questplugin.managers.MobEquipmentManager equipmentManager) {
+        if (!canWearEquipment()) {
+            return this;
+        }
+
+        List<de.questplugin.managers.MobEquipmentManager.EquipmentEntry> equipment =
+                equipmentManager.getEquipment(entity.getType());
+
+        if (equipment.isEmpty()) {
+            return this;
+        }
+
+        java.util.concurrent.ThreadLocalRandom random =
+                java.util.concurrent.ThreadLocalRandom.current();
+
+        for (de.questplugin.managers.MobEquipmentManager.EquipmentEntry entry : equipment) {
+            double roll = random.nextDouble() * 100;
+
+            if (roll < entry.getChance()) {
+                org.bukkit.inventory.ItemStack item = buildOraxenItem(entry.getOraxenItemId());
+
+                if (item != null) {
+                    setEquipment(entry.getSlot(), item, entry.getDropChance());
+                }
+            }
+        }
+
+        return this;
+    }
+
+    /**
+     * Baut Oraxen-Item
+     */
+    private org.bukkit.inventory.ItemStack buildOraxenItem(String oraxenId) {
+        try {
+            io.th0rgal.oraxen.items.ItemBuilder builder =
+                    io.th0rgal.oraxen.api.OraxenItems.getItemById(oraxenId);
+
+            if (builder != null) {
+                return builder.build();
+            }
+
+            api.getPlugin().getPluginLogger().warn("Oraxen-Item nicht gefunden: " + oraxenId);
+            return null;
+
+        } catch (Exception e) {
+            api.getPlugin().getPluginLogger().warn("Fehler beim Laden von Item '" +
+                    oraxenId + "': " + e.getMessage());
+            return null;
+        }
+    }
+
+    // ==================== DEFEND SYSTEM ====================
+
     public CustomMob setDefendTarget(LivingEntity target, double radius, DefendMode mode) {
         this.defendTarget = target;
         this.defendRadius = radius;
@@ -137,7 +244,6 @@ public class CustomMob {
         }
 
         if (target != null && entity instanceof Mob mob) {
-            // Setze Mob als "Tame" wenn Target ein Spieler ist
             if (target instanceof org.bukkit.entity.Player player) {
                 if (mob instanceof Tameable tameable) {
                     tameable.setOwner(player);
@@ -148,30 +254,18 @@ public class CustomMob {
         return this;
     }
 
-    /**
-     * Setzt Defend-Target mit Standard-Radius und Modus
-     */
     public CustomMob setDefendTarget(LivingEntity target, DefendMode mode) {
         return setDefendTarget(target, 15.0, mode);
     }
 
-    /**
-     * Setzt Defend-Target mit Standard-Radius und PASSIVE Modus (wie Hunde)
-     */
     public CustomMob setDefendTarget(LivingEntity target, double radius) {
         return setDefendTarget(target, radius, DefendMode.PASSIVE);
     }
 
-    /**
-     * Setzt ein Entity zum Verteidigen mit Standard-Radius und PASSIVE Modus
-     */
     public CustomMob setDefendTarget(LivingEntity target) {
         return setDefendTarget(target, 15.0, DefendMode.PASSIVE);
     }
 
-    /**
-     * Setzt den Defend-Modus
-     */
     public CustomMob setDefendMode(DefendMode mode) {
         this.defendMode = mode;
         if (mode == DefendMode.GUARD_POSITION && defendTarget != null) {
@@ -180,31 +274,19 @@ public class CustomMob {
         return this;
     }
 
-    /**
-     * Holt den aktuellen Defend-Modus
-     */
     public DefendMode getDefendMode() {
         return defendMode;
     }
 
-    /**
-     * Setzt eine Guard-Position (nur für GUARD_POSITION Modus)
-     */
     public CustomMob setGuardPosition(org.bukkit.Location position) {
         this.guardPosition = position.clone();
         return this;
     }
 
-    /**
-     * Holt die Guard-Position
-     */
     public org.bukkit.Location getGuardPosition() {
         return guardPosition != null ? guardPosition.clone() : null;
     }
 
-    /**
-     * Entfernt das Defend-Target
-     */
     public CustomMob removeDefendTarget() {
         this.defendTarget = null;
         if (entity instanceof Tameable tameable) {
@@ -214,49 +296,32 @@ public class CustomMob {
         return this;
     }
 
-    /**
-     * Holt das aktuelle Defend-Target
-     */
     public LivingEntity getDefendTarget() {
         return defendTarget;
     }
 
-    /**
-     * Holt den Defend-Radius
-     */
     public double getDefendRadius() {
         return defendRadius;
     }
 
-    /**
-     * Prüft ob das Defend-Target noch gültig ist
-     */
     public boolean hasValidDefendTarget() {
         return defendTarget != null && defendTarget.isValid() && !defendTarget.isDead();
     }
 
-    /**
-     * Greift Angreifer vom Defend-Target an
-     * @param attacker Der Angreifer
-     */
     public void attackDefender(LivingEntity attacker) {
         if (entity instanceof Mob mob && attacker != null) {
             mob.setTarget(attacker);
         }
     }
 
-    /**
-     * Fügt eine Fähigkeit hinzu
-     */
+    // ==================== ABILITIES ====================
+
     public CustomMob addAbility(MobAbility ability) {
         abilities.add(ability);
         ability.onApply(this);
         return this;
     }
 
-    /**
-     * Entfernt eine Fähigkeit
-     */
     public CustomMob removeAbility(MobAbility ability) {
         if (abilities.remove(ability)) {
             ability.onRemove(this);
@@ -264,61 +329,39 @@ public class CustomMob {
         return this;
     }
 
-    /**
-     * Holt alle Fähigkeiten
-     */
     public List<MobAbility> getAbilities() {
         return Collections.unmodifiableList(abilities);
     }
 
-    /**
-     * Aktiviert alle Fähigkeiten
-     */
     public void triggerAbilities() {
         abilities.forEach(ability -> ability.execute(this));
     }
 
-    /**
-     * Speichert Custom Daten
-     */
+    // ==================== DATA ====================
+
     public CustomMob setData(String key, Object value) {
         customData.put(key, value);
         return this;
     }
 
-    /**
-     * Holt Custom Daten
-     */
     public Object getData(String key) {
         return customData.get(key);
     }
 
-    /**
-     * Holt die Entity
-     */
     public LivingEntity getEntity() {
         return entity;
     }
 
-    /**
-     * Prüft ob der Mob noch lebt
-     */
     public boolean isAlive() {
         return entity != null && entity.isValid() && !entity.isDead();
     }
 
-    /**
-     * Tötet den Mob
-     */
     public void kill() {
         if (isAlive()) {
             entity.setHealth(0);
         }
     }
 
-    /**
-     * Entfernt den Mob
-     */
     public void remove() {
         cleanup();
         if (entity != null) {
@@ -326,9 +369,8 @@ public class CustomMob {
         }
     }
 
-    /**
-     * Aktualisiert Attribute basierend auf Level
-     */
+    // ==================== INTERNAL ====================
+
     private void updateAttributes() {
         double healthMultiplier = 1 + (level - 1) * 0.5;
         double damageMultiplier = 1 + (level - 1) * 0.3;
@@ -342,9 +384,6 @@ public class CustomMob {
         }
     }
 
-    /**
-     * Cleanup beim Entfernen
-     */
     public void cleanup() {
         abilities.forEach(ability -> ability.onRemove(this));
         abilities.clear();

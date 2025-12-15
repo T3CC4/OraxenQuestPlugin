@@ -1,14 +1,18 @@
 package de.questplugin.mobs.api;
 
+import de.questplugin.enums.MobEquipmentSlot;
 import org.bukkit.Location;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.LivingEntity;
+import org.bukkit.inventory.ItemStack;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
- * Builder-Pattern für Custom Mob Erstellung
+ * Builder-Pattern für Custom Mob Erstellung mit Equipment-Support
  */
 public class CustomMobBuilder {
 
@@ -25,6 +29,10 @@ public class CustomMobBuilder {
     private Double defendRadius;
     private DefendMode defendMode;
     private final List<MobAbility> abilities = new ArrayList<>();
+
+    // NEU: Equipment System
+    private final Map<MobEquipmentSlot, EquipmentEntry> equipment = new HashMap<>();
+    private boolean useEquipmentConfig = false;
 
     public CustomMobBuilder(CustomMobAPI api, EntityType type) {
         this.api = api;
@@ -66,6 +74,8 @@ public class CustomMobBuilder {
         return this;
     }
 
+    // ==================== DEFEND SYSTEM ====================
+
     public CustomMobBuilder defending(LivingEntity target) {
         this.defendTarget = target;
         this.defendMode = DefendMode.PASSIVE;
@@ -92,6 +102,8 @@ public class CustomMobBuilder {
         return this;
     }
 
+    // ==================== ABILITIES ====================
+
     public CustomMobBuilder withAbility(MobAbility ability) {
         this.abilities.add(ability);
         return this;
@@ -105,6 +117,67 @@ public class CustomMobBuilder {
         return this;
     }
 
+    // ==================== EQUIPMENT SYSTEM ====================
+
+    /**
+     * Setzt ein Equipment-Item
+     * @param slot Equipment-Slot
+     * @param item Das Item
+     * @param dropChance Drop-Chance (0.0 - 1.0)
+     */
+    public CustomMobBuilder withEquipment(MobEquipmentSlot slot, ItemStack item, float dropChance) {
+        equipment.put(slot, new EquipmentEntry(item, dropChance));
+        return this;
+    }
+
+    /**
+     * Setzt Equipment mit Standard-Drop-Chance (0%)
+     */
+    public CustomMobBuilder withEquipment(MobEquipmentSlot slot, ItemStack item) {
+        return withEquipment(slot, item, 0.0f);
+    }
+
+    /**
+     * Setzt Oraxen-Item als Equipment
+     * @param slot Equipment-Slot
+     * @param oraxenItemId Oraxen-Item ID
+     * @param dropChance Drop-Chance (0.0 - 1.0)
+     */
+    public CustomMobBuilder withOraxenEquipment(MobEquipmentSlot slot, String oraxenItemId, float dropChance) {
+        try {
+            io.th0rgal.oraxen.items.ItemBuilder builder =
+                    io.th0rgal.oraxen.api.OraxenItems.getItemById(oraxenItemId);
+
+            if (builder != null) {
+                ItemStack item = builder.build();
+                return withEquipment(slot, item, dropChance);
+            } else {
+                api.getPlugin().getPluginLogger().warn("Oraxen-Item nicht gefunden: " + oraxenItemId);
+            }
+        } catch (Exception e) {
+            api.getPlugin().getPluginLogger().warn("Fehler beim Laden von Item '" +
+                    oraxenItemId + "': " + e.getMessage());
+        }
+        return this;
+    }
+
+    /**
+     * Setzt Oraxen-Item als Equipment mit Standard-Drop-Chance
+     */
+    public CustomMobBuilder withOraxenEquipment(MobEquipmentSlot slot, String oraxenItemId) {
+        return withOraxenEquipment(slot, oraxenItemId, 0.0f);
+    }
+
+    /**
+     * Wendet die Equipment-Config aus mob-equipment an
+     */
+    public CustomMobBuilder withEquipmentConfig() {
+        this.useEquipmentConfig = true;
+        return this;
+    }
+
+    // ==================== SPAWN ====================
+
     /**
      * Spawnt den Mob mit allen konfigurierten Eigenschaften
      */
@@ -115,6 +188,7 @@ public class CustomMobBuilder {
 
         CustomMob mob = api.spawnCustomMob(location, type);
 
+        // Basis-Attribute
         mob.setLevel(level);
 
         if (name != null) {
@@ -137,6 +211,7 @@ public class CustomMobBuilder {
             mob.setScale(scale);
         }
 
+        // Defend-System
         if (defendTarget != null) {
             DefendMode mode = defendMode != null ? defendMode : DefendMode.PASSIVE;
             if (defendRadius != null) {
@@ -146,8 +221,40 @@ public class CustomMobBuilder {
             }
         }
 
+        // Abilities
         abilities.forEach(mob::addAbility);
 
+        // Equipment
+        if (!equipment.isEmpty() && mob.canWearEquipment()) {
+            api.getPlugin().getPluginLogger().debug("Setze " + equipment.size() +
+                    " Equipment-Items für " + type);
+
+            for (Map.Entry<MobEquipmentSlot, EquipmentEntry> entry : equipment.entrySet()) {
+                EquipmentEntry equipEntry = entry.getValue();
+                mob.setEquipment(entry.getKey(), equipEntry.item, equipEntry.dropChance);
+            }
+        }
+
+        // Equipment-Config anwenden (falls aktiviert)
+        if (useEquipmentConfig) {
+            mob.applyEquipmentConfig(api.getPlugin().getMobEquipmentManager());
+        }
+
         return mob;
+    }
+
+    // ==================== HELPER ====================
+
+    /**
+     * Equipment-Entry für internen Gebrauch
+     */
+    private static class EquipmentEntry {
+        final ItemStack item;
+        final float dropChance;
+
+        EquipmentEntry(ItemStack item, float dropChance) {
+            this.item = item;
+            this.dropChance = dropChance;
+        }
     }
 }
