@@ -431,6 +431,10 @@ public class EliteMobManager extends BaseManager implements Listener {
         structureElites.clear();
         debugMode = plugin.getConfig().getBoolean("debug-mode", false);
         loadEliteMobs();
+
+        if (plugin.getEliteDropListener() != null) {
+            plugin.getEliteDropListener().reload();
+        }
     }
 
     /**

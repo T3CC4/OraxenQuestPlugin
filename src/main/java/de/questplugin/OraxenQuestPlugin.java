@@ -34,6 +34,7 @@ public class OraxenQuestPlugin extends JavaPlugin {
 
     // Listener
     private BlockBreakListener blockBreakListener;
+    private EliteDropListener eliteDropListener;
 
     // Logger
     private PluginLogger pluginLogger;
@@ -97,6 +98,10 @@ public class OraxenQuestPlugin extends JavaPlugin {
         Bukkit.getPluginManager().registerEvents(new NPCInteractListener(this), this);
         Bukkit.getPluginManager().registerEvents(new TradeCompleteListener(this), this);
         Bukkit.getPluginManager().registerEvents(new AnvilListener(this), this);
+
+        eliteDropListener = new EliteDropListener(this);
+        Bukkit.getPluginManager().registerEvents(eliteDropListener, this);
+        pluginLogger.info("✓ Elite-Drop-System aktiv!");
 
         // Commands
         QuestCommand questCommand = new QuestCommand(this);
@@ -243,6 +248,10 @@ public class OraxenQuestPlugin extends JavaPlugin {
 
     public static OraxenQuestPlugin getInstance() {
         return instance;
+    }
+
+    public EliteDropListener getEliteDropListener() {
+        return eliteDropListener;
     }
 
     public DataManager getDataManager() {

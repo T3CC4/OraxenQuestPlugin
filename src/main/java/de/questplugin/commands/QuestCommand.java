@@ -143,6 +143,10 @@ public class QuestCommand implements CommandExecutor, TabCompleter {
             plugin.getRaidManager().reload();
             plugin.getEliteMobManager().reload();
 
+            if (plugin.getEliteDropListener() != null) {
+                plugin.getEliteDropListener().reload();
+            }
+
             sender.sendMessage(PREFIX + ChatColor.GREEN + "✓ Config neu geladen!");
         } catch (Exception e) {
             sender.sendMessage(PREFIX + ChatColor.RED + "✗ Fehler beim Reload: " + e.getMessage());
