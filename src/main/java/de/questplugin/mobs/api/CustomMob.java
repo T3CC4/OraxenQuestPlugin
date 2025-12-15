@@ -40,7 +40,9 @@ public class CustomMob {
         this.guardPosition = null;
 
         // Markiere Entity als Custom Mob
-        NamespacedKey key = new NamespacedKey(String.valueOf(api.getPlugin()), "custom_mob");
+        // FIX: Nutze plugin.getName() statt String.valueOf(plugin)
+        // getName() gibt nur den Plugin-Namen zurück (ohne Version/Spaces)
+        NamespacedKey key = new NamespacedKey(api.getPlugin().getName().toLowerCase(), "custom_mob");
         entity.getPersistentDataContainer().set(key, PersistentDataType.BYTE, (byte) 1);
     }
 

@@ -6,14 +6,11 @@ import de.questplugin.enums.MobType;
 import de.questplugin.mobs.api.CustomMob;
 import de.questplugin.mobs.api.CustomMobAPI;
 import de.questplugin.mobs.api.CustomMobBuilder;
-import de.questplugin.mobs.api.DefendMode;
-import de.questplugin.utils.StructureHelper;
-import org.bukkit.ChatColor;
-import org.bukkit.Location;
+import de.questplugin.utils.BiomeHelper;
+import org.bukkit.*;
 import org.bukkit.block.Biome;
 import org.bukkit.configuration.ConfigurationSection;
-import org.bukkit.entity.EntityType;
-import org.bukkit.entity.LivingEntity;
+import org.bukkit.entity.*;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
@@ -22,11 +19,16 @@ import org.bukkit.event.entity.CreatureSpawnEvent;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.stream.Collectors;
 
 /**
  * Verwaltet Elite-Mobs die in bestimmten Biomen/Strukturen spawnen
  *
- * FIX: Besseres Biom-Matching mit Wildcard-Support
+ * FIXES:
+ * - Bessere Biom-Validierung mit BiomeHelper
+ * - Unterstützt BiomeType Enum für sichere Namen
+ * - Erweiterte Debug-Ausgaben
+ * - Besseres Wildcard-Matching
  */
 public class EliteMobManager extends BaseManager implements Listener {
 
@@ -75,17 +77,117 @@ public class EliteMobManager extends BaseManager implements Listener {
                 structureElites.size() + " Struktur-Configs geladen");
     }
 
+    /**
+     * Lädt Biom-Elites mit verbesserter Validierung
+     */
     private void loadBiomeElites(ConfigurationSection section) {
         for (String biomeStr : section.getKeys(false)) {
             ConfigurationSection eliteSection = section.getConfigurationSection(biomeStr);
             if (eliteSection == null) continue;
 
+            // VALIDIERE Biom-Namen mit BiomeHelper
+            if (!validateBiomeConfig(biomeStr)) {
+                warn("Ungültiger Biom-Name in elite-mobs.biomes: '" + biomeStr + "'");
+                warn("  Nutze /quest biomes für gültige Biom-Namen");
+                warn("  Beispiele: DEEP_DARK, deep_dark, forest, PLAINS");
+                continue;
+            }
+
             EliteMobConfig config = EliteMobConfig.load(biomeStr, eliteSection, plugin);
             if (config != null) {
                 biomeElites.put(biomeStr.toLowerCase(), config);
+
+                // Zeige welche Biome matched werden
+                List<Biome> matchedBiomes = getMatchingBiomes(biomeStr);
                 debug("Biom-Elite geladen: " + biomeStr + " (" + config.getMobType() + ")");
+                debug("  Matched " + matchedBiomes.size() + " Biome:");
+
+                if (matchedBiomes.size() <= 10) {
+                    // Zeige alle wenn wenige
+                    for (Biome biome : matchedBiomes) {
+                        debug("    - " + biome.name() + " (" + BiomeHelper.getGermanName(biome) + ")");
+                    }
+                } else {
+                    // Zeige nur erste 5
+                    debug("    " + matchedBiomes.stream()
+                            .limit(5)
+                            .map(b -> b.name())
+                            .collect(Collectors.joining(", ")) + " ... (+" + (matchedBiomes.size() - 5) + " mehr)");
+                }
+                debug("  Spawn-Chance: " + config.getSpawnChance() + "%");
+                debug("  Mob-Typ: " + config.getMobType());
             }
         }
+    }
+
+    /**
+     * Validiert Biom-Config-Namen
+     */
+    private boolean validateBiomeConfig(String biomeStr) {
+        if (biomeStr == null || biomeStr.isEmpty()) {
+            return false;
+        }
+
+        // Wildcard erlauben
+        if (biomeStr.equals("*")) {
+            return true;
+        }
+
+        // Versuche als BiomeType zu parsen
+        BiomeType biomeType = BiomeHelper.fromString(biomeStr);
+        if (biomeType != null) {
+            return true;
+        }
+
+        // Versuche als Bukkit Biome
+        try {
+            Biome.valueOf(biomeStr.toUpperCase().replace(" ", "_"));
+            return true;
+        } catch (IllegalArgumentException e) {
+            // Nicht gefunden
+        }
+
+        // Prüfe ob es ein Teilstring eines Biomes ist
+        String normalized = biomeStr.toLowerCase().replace("_", "");
+        for (Biome biome : Biome.values()) {
+            String biomeName = biome.name().toLowerCase().replace("_", "");
+            if (biomeName.contains(normalized) || normalized.contains(biomeName)) {
+                return true; // Teilstring-Match ist ok
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Holt alle Biome die zu einem Config-String matchen
+     */
+    private List<Biome> getMatchingBiomes(String biomeStr) {
+        List<Biome> matched = new ArrayList<>();
+
+        // Wildcard = alle
+        if (biomeStr.equals("*")) {
+            return Arrays.asList(Biome.values());
+        }
+
+        String normalized = biomeStr.toLowerCase().replace("_", "").replace(" ", "");
+
+        for (Biome biome : Biome.values()) {
+            String biomeName = biome.name().toLowerCase().replace("_", "");
+
+            // Exakter Match
+            if (biomeName.equals(normalized)) {
+                matched.add(biome);
+                continue;
+            }
+
+            // Teilstring-Match (z.B. "forest" matched "birch_forest")
+            if (biomeName.contains(normalized) || normalized.contains(biomeName)) {
+                matched.add(biome);
+            }
+        }
+
+        return matched;
     }
 
     private void loadStructureElites(ConfigurationSection section) {
@@ -102,7 +204,7 @@ public class EliteMobManager extends BaseManager implements Listener {
     }
 
     /**
-     * Event Handler für Mob-Spawning
+     * Event Handler für Mob-Spawning mit verbessertem Debug
      */
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onCreatureSpawn(CreatureSpawnEvent event) {
@@ -117,16 +219,32 @@ public class EliteMobManager extends BaseManager implements Listener {
 
         LivingEntity entity = (LivingEntity) event.getEntity();
         Location location = entity.getLocation();
+        Biome biome = location.getBlock().getBiome();
+        EntityType mobType = entity.getType();
+
+        // DEBUG: Zeige jeden Spawn-Versuch
+        if (debugMode) {
+            debug("=== Mob Spawn ===");
+            debug("Typ: " + mobType);
+            debug("Biom: " + biome + " (" + BiomeHelper.getGermanName(biome) + ")");
+            debug("Grund: " + event.getSpawnReason());
+            debug("Location: " + location.getBlockX() + ", " + location.getBlockY() + ", " + location.getBlockZ());
+        }
 
         // Prüfe Biom-Elites
-        Biome biome = location.getBlock().getBiome();
-        EliteMobConfig biomeConfig = findBiomeElite(biome, entity.getType());
+        EliteMobConfig biomeConfig = findBiomeElite(biome, mobType);
 
         if (biomeConfig != null) {
+            debug("Elite-Config gefunden: " + biomeConfig.getEliteName());
+            debug("  Chance: " + biomeConfig.getSpawnChance() + "%");
+
             // Rolle für Spawn-Chance
             double roll = ThreadLocalRandom.current().nextDouble() * 100;
+            debug("  Roll: " + String.format("%.2f", roll));
 
             if (roll < biomeConfig.getSpawnChance()) {
+                debug("  → ERFOLG! Spawne Elite-Mob");
+
                 // Event canceln und durch Elite ersetzen
                 event.setCancelled(true);
                 spawnEliteMob(location, biomeConfig);
@@ -135,62 +253,84 @@ public class EliteMobManager extends BaseManager implements Listener {
                         " @ " + biome + " (" + String.format("%.1f", roll) +
                         "/" + biomeConfig.getSpawnChance() + "%)");
             } else {
-                debug("Elite-Roll failed: " + roll + " >= " + biomeConfig.getSpawnChance());
+                debug("  → FAIL (Roll >= Chance)");
             }
+        } else if (debugMode) {
+            debug("  → Keine Elite-Config für diesen Mob-Typ");
+        }
+
+        if (debugMode) {
+            debug("=================");
         }
     }
 
     /**
-     * Findet Elite-Config für Biom und Mob-Typ
-     * Unterstützt Wildcard-Matching für Biom-Gruppen
+     * Findet Elite-Config für Biom und Mob-Typ mit verbessertem Matching
      */
     private EliteMobConfig findBiomeElite(Biome biome, EntityType mobType) {
         String biomeName = biome.name().toLowerCase();
 
-        debug("Suche Elite für: " + biomeName + " (Mob: " + mobType + ")");
-
-        // 1. Exakter Match
-        EliteMobConfig config = biomeElites.get(biomeName);
-        if (config != null && config.getMobType() == mobType) {
-            debug("  → Exakter Match gefunden!");
-            return config;
+        if (debugMode) {
+            debug("Suche Elite für: " + biomeName + " (Mob: " + mobType + ")");
         }
 
-        // 2. Wildcard-Match mit besserem Matching
-        // Beispiel: "forest" matched "FOREST", "BIRCH_FOREST", "DARK_FOREST"
+        // 1. Exakter Match mit normalisierten Namen
+        String normalizedBiome = biomeName.replace("_", "");
+
         for (Map.Entry<String, EliteMobConfig> entry : biomeElites.entrySet()) {
             String configKey = entry.getKey();
+            EliteMobConfig config = entry.getValue();
 
-            // Normalisiere beide Namen (ohne Underscores)
-            String normalizedBiome = biomeName.replace("_", "");
-            String normalizedKey = configKey.replace("_", "");
-
-            boolean matches = false;
-
-            // Prüfe verschiedene Match-Typen
-            if (normalizedBiome.contains(normalizedKey)) {
-                matches = true; // z.B. "birch_forest" contains "forest"
-            } else if (normalizedKey.contains(normalizedBiome)) {
-                matches = true; // Reverse match
-            } else if (biomeName.startsWith(configKey)) {
-                matches = true; // z.B. "forest" matches "forest_*"
+            // Prüfe Mob-Typ
+            if (config.getMobType() != mobType) {
+                continue;
             }
 
-            if (matches && entry.getValue().getMobType() == mobType) {
-                debug("  → Wildcard Match: '" + configKey + "' matched '" + biomeName + "'");
-                return entry.getValue();
+            String normalizedKey = configKey.replace("_", "");
+
+            // Exakter Match
+            if (normalizedBiome.equals(normalizedKey)) {
+                debug("  → Exakter Match: " + configKey);
+                return config;
+            }
+
+            // Teilstring-Match
+            if (normalizedBiome.contains(normalizedKey)) {
+                debug("  → Teilstring Match: '" + biomeName + "' contains '" + configKey + "'");
+                return config;
+            }
+
+            if (normalizedKey.contains(normalizedBiome)) {
+                debug("  → Reverse Match: '" + configKey + "' contains '" + biomeName + "'");
+                return config;
+            }
+
+            // Prefix-Match (z.B. "forest" matched "forest_*")
+            if (biomeName.startsWith(configKey) || configKey.startsWith(biomeName.split("_")[0])) {
+                debug("  → Prefix Match: " + configKey);
+                return config;
             }
         }
 
-        debug("  → Kein Elite-Config gefunden");
+        if (debugMode) {
+            debug("  → Kein Elite-Config gefunden");
+            debug("  Verfügbare Configs: " + biomeElites.keySet());
+        }
         return null;
     }
 
     /**
-     * Spawnt einen Elite-Mob
+     * Spawnt einen Elite-Mob mit besserer Error-Behandlung
      */
     private void spawnEliteMob(Location location, EliteMobConfig config) {
         try {
+            debug("Spawne Elite-Mob: " + config.getEliteName());
+            debug("  Level: " + config.getLevel());
+            debug("  Health: " + config.getHealth());
+            debug("  Damage: " + config.getDamage());
+            debug("  Scale: " + config.getScale());
+            debug("  Abilities: " + config.getAbilities().size());
+
             // Builder mit Abilities VORHER
             CustomMobBuilder builder = mobAPI.createMob(config.getMobType())
                     .at(location)
@@ -202,15 +342,20 @@ public class EliteMobManager extends BaseManager implements Listener {
 
             // Abilities zum Builder hinzufügen
             for (String abilityId : config.getAbilities()) {
+                debug("  Füge Ability hinzu: " + abilityId);
                 builder.withAbility(abilityId);
             }
 
             // Jetzt spawnen
             CustomMob elite = builder.spawn();
 
-            debug("Elite-Mob erstellt: " + config.getEliteName() +
-                    " (Level " + config.getLevel() + ") mit " +
-                    config.getAbilities().size() + " Abilities");
+            if (elite != null && elite.isAlive()) {
+                info("Elite-Mob erfolgreich gespawnt: " + config.getEliteName() +
+                        " (Level " + config.getLevel() + ") mit " +
+                        config.getAbilities().size() + " Abilities");
+            } else {
+                warn("Elite-Mob gespawnt aber nicht alive: " + config.getEliteName());
+            }
 
         } catch (Exception e) {
             warn("Fehler beim Spawnen von Elite-Mob: " + e.getMessage());
