@@ -17,6 +17,7 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.CreatureSpawnEvent;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.util.StructureSearchResult;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -25,6 +26,11 @@ import java.util.stream.Collectors;
 
 /**
  * Verwaltet Elite-Mobs mit Equipment-Support
+ *
+ * Structure Detection: Nutzt native Spigot API (Chunk.getStructures())
+ * - Zuverlässig und performant
+ * - Case-insensitive Struktur-Matching
+ * - Priorität: Structure > Biome
  */
 public class EliteMobManager extends BaseManager implements Listener {
 
@@ -94,6 +100,375 @@ public class EliteMobManager extends BaseManager implements Listener {
         }
     }
 
+    private void loadStructureElites(ConfigurationSection section) {
+        for (String structureStr : section.getKeys(false)) {
+            ConfigurationSection eliteSection = section.getConfigurationSection(structureStr);
+            if (eliteSection == null) continue;
+
+            EliteMobConfig config = EliteMobConfig.load(structureStr, eliteSection, plugin);
+            if (config != null) {
+                structureElites.put(structureStr.toLowerCase(), config);
+                debug("Struktur-Elite geladen: " + structureStr + " (" + config.getMobType() + ")");
+                debug("  Spawn-Chance: " + config.getSpawnChance() + "%");
+                debug("  Equipment: " + (config.hasEquipment() ? "JA" : "NEIN"));
+            }
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onCreatureSpawn(CreatureSpawnEvent event) {
+        if (!(event.getEntity() instanceof LivingEntity)) {
+            return;
+        }
+
+        if (!isNaturalSpawn(event.getSpawnReason())) {
+            return;
+        }
+
+        LivingEntity entity = (LivingEntity) event.getEntity();
+        Location location = entity.getLocation();
+        Biome biome = location.getBlock().getBiome();
+        EntityType mobType = entity.getType();
+
+        if (debugMode) {
+            debug("=== Mob Spawn ===");
+            debug("Typ: " + mobType);
+            debug("Biom: " + biome + " (" + BiomeHelper.getGermanName(biome) + ")");
+            debug("Location: " + location.getBlockX() + ", " + location.getBlockY() + ", " + location.getBlockZ());
+        }
+
+        // PRIORITÄT 1: Structure-Based Spawns (höhere Prio)
+        EliteMobConfig structureConfig = findStructureElite(location, mobType);
+
+        if (structureConfig != null) {
+            debug("Structure-Elite gefunden: " + structureConfig.getEliteName());
+
+            double roll = ThreadLocalRandom.current().nextDouble() * 100;
+            debug("  Roll: " + String.format("%.2f", roll));
+
+            if (roll < structureConfig.getSpawnChance()) {
+                debug("  → ERFOLG! Spawne Structure-Elite");
+
+                event.setCancelled(true);
+                spawnEliteMob(location, structureConfig);
+
+                info("Structure-Elite gespawnt: " + structureConfig.getEliteName() +
+                        " @ " + location.getBlock().getType());
+
+                if (debugMode) {
+                    debug("=================");
+                }
+                return; // WICHTIG: Kein Biome-Check mehr
+            }
+        }
+
+        // PRIORITÄT 2: Biome-Based Spawns (Fallback)
+        EliteMobConfig biomeConfig = findBiomeElite(biome, mobType);
+
+        if (biomeConfig != null) {
+            debug("Biome-Elite gefunden: " + biomeConfig.getEliteName());
+
+            double roll = ThreadLocalRandom.current().nextDouble() * 100;
+            debug("  Roll: " + String.format("%.2f", roll));
+
+            if (roll < biomeConfig.getSpawnChance()) {
+                debug("  → ERFOLG! Spawne Biome-Elite");
+
+                event.setCancelled(true);
+                spawnEliteMob(location, biomeConfig);
+
+                info("Biome-Elite gespawnt: " + biomeConfig.getEliteName() +
+                        " @ " + biome);
+            }
+        }
+
+        if (debugMode) {
+            debug("=================");
+        }
+    }
+
+    /**
+     * Findet Structure-Elite Config anhand der Location
+     * Nutzt World.locateNearestStructure() mit Structure aus Registry
+     */
+    private EliteMobConfig findStructureElite(Location location, EntityType mobType) {
+        if (structureElites.isEmpty()) {
+            return null;
+        }
+
+        try {
+            World world = location.getWorld();
+            Registry<org.bukkit.generator.structure.Structure> structureRegistry =
+                    Bukkit.getRegistry(org.bukkit.generator.structure.Structure.class);
+
+            // Prüfe nur die Strukturen, die auch in der Config sind
+            for (Map.Entry<String, EliteMobConfig> entry : structureElites.entrySet()) {
+                String configKey = entry.getKey();
+                EliteMobConfig config = entry.getValue();
+
+                // Skip wenn Mob-Typ nicht passt
+                if (config.getMobType() != mobType) {
+                    continue;
+                }
+
+                // Hole Structure aus Registry
+                NamespacedKey structureKey = getStructureKey(configKey);
+                if (structureKey == null) {
+                    continue;
+                }
+
+                org.bukkit.generator.structure.Structure structure = structureRegistry.get(structureKey);
+                if (structure == null) {
+                    if (debugMode) {
+                        debug("  Struktur nicht in Registry gefunden: " + structureKey);
+                    }
+                    continue;
+                }
+
+                try {
+                    // Suche Struktur im Umkreis von 64 Blöcken
+                    StructureSearchResult result = world.locateNearestStructure(
+                            location,
+                            structure,
+                            64,
+                            false
+                    );
+
+                    if (result != null) {
+                        Location structureLocation = result.getLocation();
+
+                        // Prüfe ob wir nah genug an der Struktur sind (max 80 Blöcke)
+                        double distance = location.distance(structureLocation);
+                        if (distance <= 80.0) {
+                            String structureName = structureKey.getKey();
+                            debug("  Struktur gefunden: " + structureName + " (Distanz: " +
+                                    String.format("%.1f", distance) + " Blöcke)");
+                            debug("  ✓ Structure-Elite Match: " + configKey);
+                            return config;
+                        }
+                    }
+                } catch (Exception e) {
+                    // Struktur wird nicht unterstützt - ignorieren
+                    if (debugMode) {
+                        debug("  Fehler bei Struktur-Suche für " + structureKey + ": " + e.getMessage());
+                    }
+                }
+            }
+
+            debug("  ✗ Keine Struktur in Reichweite gefunden");
+
+        } catch (Exception e) {
+            warn("Fehler bei Structure-Detection: " + e.getMessage());
+            if (debugMode) {
+                e.printStackTrace();
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Mapped Config-Key zu NamespacedKey für Structure Registry
+     * Alle Minecraft 1.21.10 Vanilla-Strukturen
+     */
+    private NamespacedKey getStructureKey(String configKey) {
+        String normalized = configKey.toLowerCase().replace("-", "_");
+
+        // Mapping zu Minecraft Structure Registry Keys
+        switch (normalized) {
+            // ========== NETHER ==========
+            case "fortress":
+            case "nether_fortress":
+            case "netherfortress":
+                return NamespacedKey.minecraft("fortress");
+
+            case "bastion":
+            case "bastion_remnant":
+            case "bastionremnant":
+                return NamespacedKey.minecraft("bastion_remnant");
+
+            case "nether_fossil":
+            case "fossil":
+                return NamespacedKey.minecraft("nether_fossil");
+
+            case "ruined_portal_nether":
+            case "nether_portal":
+                return NamespacedKey.minecraft("ruined_portal_nether");
+
+            // ========== END ==========
+            case "end_city":
+            case "endcity":
+                return NamespacedKey.minecraft("end_city");
+
+            // ========== OVERWORLD - Villages ==========
+            case "village":
+            case "plains_village":
+                return NamespacedKey.minecraft("village_plains");
+
+            case "desert_village":
+                return NamespacedKey.minecraft("village_desert");
+
+            case "savanna_village":
+                return NamespacedKey.minecraft("village_savanna");
+
+            case "taiga_village":
+                return NamespacedKey.minecraft("village_taiga");
+
+            case "snowy_village":
+            case "snow_village":
+                return NamespacedKey.minecraft("village_snowy");
+
+            // ========== OVERWORLD - Tempel ==========
+            case "desert_pyramid":
+            case "desert_temple":
+            case "deserttemple":
+            case "temple":
+                return NamespacedKey.minecraft("desert_pyramid");
+
+            case "jungle_pyramid":
+            case "jungle_temple":
+            case "jungletemple":
+                return NamespacedKey.minecraft("jungle_pyramid");
+
+            case "swamp_hut":
+            case "witch_hut":
+                return NamespacedKey.minecraft("swamp_hut");
+
+            // ========== OVERWORLD - Große Strukturen ==========
+            case "mansion":
+            case "woodland_mansion":
+            case "woodlandmansion":
+                return NamespacedKey.minecraft("mansion");
+
+            case "ocean_monument":
+            case "monument":
+                return NamespacedKey.minecraft("monument");
+
+            case "ancient_city":
+            case "ancientcity":
+                return NamespacedKey.minecraft("ancient_city");
+
+            case "stronghold":
+                return NamespacedKey.minecraft("stronghold");
+
+            case "trial_chambers":
+            case "trial_chamber":
+            case "trialchambers":
+                return NamespacedKey.minecraft("trial_chambers");
+
+            // ========== OVERWORLD - Outposts & Ruins ==========
+            case "pillager_outpost":
+            case "outpost":
+                return NamespacedKey.minecraft("pillager_outpost");
+
+            case "ocean_ruin":
+            case "ocean_ruins":
+            case "ocean_ruin_cold":
+                return NamespacedKey.minecraft("ocean_ruin_cold");
+
+            case "ocean_ruin_warm":
+                return NamespacedKey.minecraft("ocean_ruin_warm");
+
+            // ========== OVERWORLD - Mineshafts ==========
+            case "mineshaft":
+                return NamespacedKey.minecraft("mineshaft");
+
+            case "mineshaft_mesa":
+            case "mesa_mineshaft":
+                return NamespacedKey.minecraft("mineshaft_mesa");
+
+            // ========== OVERWORLD - Shipwrecks ==========
+            case "shipwreck":
+                return NamespacedKey.minecraft("shipwreck");
+
+            case "shipwreck_beached":
+            case "beached_shipwreck":
+                return NamespacedKey.minecraft("shipwreck_beached");
+
+            // ========== OVERWORLD - Ruined Portals ==========
+            case "ruined_portal":
+            case "portal":
+                return NamespacedKey.minecraft("ruined_portal");
+
+            case "ruined_portal_desert":
+            case "desert_portal":
+                return NamespacedKey.minecraft("ruined_portal_desert");
+
+            case "ruined_portal_jungle":
+            case "jungle_portal":
+                return NamespacedKey.minecraft("ruined_portal_jungle");
+
+            case "ruined_portal_swamp":
+            case "swamp_portal":
+                return NamespacedKey.minecraft("ruined_portal_swamp");
+
+            case "ruined_portal_mountain":
+            case "mountain_portal":
+                return NamespacedKey.minecraft("ruined_portal_mountain");
+
+            case "ruined_portal_ocean":
+            case "ocean_portal":
+                return NamespacedKey.minecraft("ruined_portal_ocean");
+
+            // ========== OVERWORLD - Kleine Strukturen ==========
+            case "buried_treasure":
+            case "treasure":
+                return NamespacedKey.minecraft("buried_treasure");
+
+            case "igloo":
+                return NamespacedKey.minecraft("igloo");
+
+            default:
+                if (debugMode) {
+                    debug("  Unbekannter Struktur-Key: " + configKey);
+                }
+                return null;
+        }
+    }
+
+    private EliteMobConfig findBiomeElite(Biome biome, EntityType mobType) {
+        String biomeName = biome.name().toLowerCase();
+
+        if (debugMode) {
+            debug("Suche Elite für: " + biomeName + " (Mob: " + mobType + ")");
+        }
+
+        String normalizedBiome = biomeName.replace("_", "");
+
+        for (Map.Entry<String, EliteMobConfig> entry : biomeElites.entrySet()) {
+            String configKey = entry.getKey();
+            EliteMobConfig config = entry.getValue();
+
+            if (config.getMobType() != mobType) {
+                continue;
+            }
+
+            String normalizedKey = configKey.replace("_", "");
+
+            if (normalizedBiome.equals(normalizedKey)) {
+                debug("  → Exakter Match: " + configKey);
+                return config;
+            }
+
+            if (normalizedBiome.contains(normalizedKey)) {
+                debug("  → Teilstring Match: '" + biomeName + "' contains '" + configKey + "'");
+                return config;
+            }
+
+            if (normalizedKey.contains(normalizedBiome)) {
+                debug("  → Reverse Match: '" + configKey + "' contains '" + biomeName + "'");
+                return config;
+            }
+
+            if (biomeName.startsWith(configKey) || configKey.startsWith(biomeName.split("_")[0])) {
+                debug("  → Prefix Match: " + configKey);
+                return config;
+            }
+        }
+
+        return null;
+    }
+
     private boolean validateBiomeConfig(String biomeStr) {
         if (biomeStr == null || biomeStr.isEmpty()) {
             return false;
@@ -151,107 +526,6 @@ public class EliteMobManager extends BaseManager implements Listener {
         return matched;
     }
 
-    private void loadStructureElites(ConfigurationSection section) {
-        for (String structureStr : section.getKeys(false)) {
-            ConfigurationSection eliteSection = section.getConfigurationSection(structureStr);
-            if (eliteSection == null) continue;
-
-            EliteMobConfig config = EliteMobConfig.load(structureStr, eliteSection, plugin);
-            if (config != null) {
-                structureElites.put(structureStr.toLowerCase(), config);
-                debug("Struktur-Elite geladen: " + structureStr);
-            }
-        }
-    }
-
-    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
-    public void onCreatureSpawn(CreatureSpawnEvent event) {
-        if (!(event.getEntity() instanceof LivingEntity)) {
-            return;
-        }
-
-        if (!isNaturalSpawn(event.getSpawnReason())) {
-            return;
-        }
-
-        LivingEntity entity = (LivingEntity) event.getEntity();
-        Location location = entity.getLocation();
-        Biome biome = location.getBlock().getBiome();
-        EntityType mobType = entity.getType();
-
-        if (debugMode) {
-            debug("=== Mob Spawn ===");
-            debug("Typ: " + mobType);
-            debug("Biom: " + biome + " (" + BiomeHelper.getGermanName(biome) + ")");
-        }
-
-        EliteMobConfig biomeConfig = findBiomeElite(biome, mobType);
-
-        if (biomeConfig != null) {
-            debug("Elite-Config gefunden: " + biomeConfig.getEliteName());
-
-            double roll = ThreadLocalRandom.current().nextDouble() * 100;
-            debug("  Roll: " + String.format("%.2f", roll));
-
-            if (roll < biomeConfig.getSpawnChance()) {
-                debug("  → ERFOLG! Spawne Elite-Mob");
-
-                event.setCancelled(true);
-                spawnEliteMob(location, biomeConfig);
-
-                info("Elite-Mob gespawnt: " + biomeConfig.getEliteName() +
-                        " @ " + biome);
-            }
-        }
-
-        if (debugMode) {
-            debug("=================");
-        }
-    }
-
-    private EliteMobConfig findBiomeElite(Biome biome, EntityType mobType) {
-        String biomeName = biome.name().toLowerCase();
-
-        if (debugMode) {
-            debug("Suche Elite für: " + biomeName + " (Mob: " + mobType + ")");
-        }
-
-        String normalizedBiome = biomeName.replace("_", "");
-
-        for (Map.Entry<String, EliteMobConfig> entry : biomeElites.entrySet()) {
-            String configKey = entry.getKey();
-            EliteMobConfig config = entry.getValue();
-
-            if (config.getMobType() != mobType) {
-                continue;
-            }
-
-            String normalizedKey = configKey.replace("_", "");
-
-            if (normalizedBiome.equals(normalizedKey)) {
-                debug("  → Exakter Match: " + configKey);
-                return config;
-            }
-
-            if (normalizedBiome.contains(normalizedKey)) {
-                debug("  → Teilstring Match: '" + biomeName + "' contains '" + configKey + "'");
-                return config;
-            }
-
-            if (normalizedKey.contains(normalizedBiome)) {
-                debug("  → Reverse Match: '" + configKey + "' contains '" + biomeName + "'");
-                return config;
-            }
-
-            if (biomeName.startsWith(configKey) || configKey.startsWith(biomeName.split("_")[0])) {
-                debug("  → Prefix Match: " + configKey);
-                return config;
-            }
-        }
-
-        return null;
-    }
-
     /**
      * Spawnt Elite-Mob mit Equipment
      */
@@ -273,7 +547,7 @@ public class EliteMobManager extends BaseManager implements Listener {
                 builder.withAbility(abilityId);
             }
 
-            // NEU: Equipment hinzufügen
+            // Equipment hinzufügen
             if (config.hasEquipment()) {
                 for (Map.Entry<MobEquipmentSlot, EliteMobConfig.EquipmentItem> entry :
                         config.getEquipment().entrySet()) {
@@ -375,7 +649,7 @@ public class EliteMobManager extends BaseManager implements Listener {
         private final double scale;
         private final double spawnChance;
         private final List<String> abilities;
-        private final Map<MobEquipmentSlot, EquipmentItem> equipment; // NEU
+        private final Map<MobEquipmentSlot, EquipmentItem> equipment;
 
         private EliteMobConfig(String id, String eliteName, EntityType mobType, int level,
                                double health, double damage, double scale, double spawnChance,
@@ -417,7 +691,7 @@ public class EliteMobManager extends BaseManager implements Listener {
                 double spawnChance = section.getDouble("spawn-chance", 5.0);
                 List<String> abilities = section.getStringList("abilities");
 
-                // NEU: Equipment laden
+                // Equipment laden
                 Map<MobEquipmentSlot, EquipmentItem> equipment = new HashMap<>();
                 ConfigurationSection equipSection = section.getConfigurationSection("equipment");
 
@@ -462,7 +736,6 @@ public class EliteMobManager extends BaseManager implements Listener {
         public double getSpawnChance() { return spawnChance; }
         public List<String> getAbilities() { return abilities; }
 
-        // NEU: Equipment Methoden
         public Map<MobEquipmentSlot, EquipmentItem> getEquipment() {
             return equipment;
         }
@@ -471,9 +744,6 @@ public class EliteMobManager extends BaseManager implements Listener {
             return !equipment.isEmpty();
         }
 
-        /**
-         * Equipment-Item für Elite-Mobs
-         */
         public static class EquipmentItem {
             final String oraxenItemId;
             final float dropChance;
