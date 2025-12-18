@@ -5,6 +5,7 @@ import de.questplugin.managers.MobEquipmentManager;
 import de.questplugin.mobs.api.CustomMob;
 import de.questplugin.mobs.api.CustomMobAPI;
 import de.questplugin.mobs.api.CustomMobBuilder;
+import de.questplugin.utils.EquipmentHelper;
 import net.kyori.adventure.bossbar.BossBar;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
@@ -333,74 +334,11 @@ public class RaidInstance {
     }
 
     private void applyEquipment(LivingEntity mob) {
-        MobEquipmentManager equipmentManager = plugin.getMobEquipmentManager();
-        List<MobEquipmentManager.EquipmentEntry> equipment =
-                equipmentManager.getEquipment(mob.getType());
-
-        if (equipment.isEmpty()) {
-            return;
-        }
-
-        EntityEquipment entityEquipment = mob.getEquipment();
-        if (entityEquipment == null) return;
-
-        ThreadLocalRandom random = ThreadLocalRandom.current();
-
-        for (MobEquipmentManager.EquipmentEntry entry : equipment) {
-            double roll = random.nextDouble() * 100;
-
-            if (roll < entry.getChance()) {
-                ItemStack item = buildOraxenItem(entry.getOraxenItemId());
-
-                if (item != null) {
-                    switch (entry.getSlot()) {
-                        case MAIN_HAND:
-                            entityEquipment.setItemInMainHand(item);
-                            entityEquipment.setItemInMainHandDropChance(entry.getDropChance());
-                            break;
-                        case OFF_HAND:
-                            entityEquipment.setItemInOffHand(item);
-                            entityEquipment.setItemInOffHandDropChance(entry.getDropChance());
-                            break;
-                        case HELMET:
-                            entityEquipment.setHelmet(item);
-                            entityEquipment.setHelmetDropChance(entry.getDropChance());
-                            break;
-                        case CHESTPLATE:
-                            entityEquipment.setChestplate(item);
-                            entityEquipment.setChestplateDropChance(entry.getDropChance());
-                            break;
-                        case LEGGINGS:
-                            entityEquipment.setLeggings(item);
-                            entityEquipment.setLeggingsDropChance(entry.getDropChance());
-                            break;
-                        case BOOTS:
-                            entityEquipment.setBoots(item);
-                            entityEquipment.setBootsDropChance(entry.getDropChance());
-                            break;
-                    }
-                }
-            }
-        }
-    }
-
-    private ItemStack buildOraxenItem(String oraxenId) {
-        try {
-            io.th0rgal.oraxen.items.ItemBuilder builder =
-                    io.th0rgal.oraxen.api.OraxenItems.getItemById(oraxenId);
-
-            if (builder != null) {
-                return builder.build();
-            }
-
-            plugin.getPluginLogger().warn("Oraxen-Item nicht gefunden: " + oraxenId);
-            return null;
-
-        } catch (Exception e) {
-            plugin.getLogger().warning("Fehler beim Laden von Item '" +
-                    oraxenId + "': " + e.getMessage());
-            return null;
-        }
+        EquipmentHelper.applyEquipmentConfig(
+                mob,
+                plugin.getMobEquipmentManager(),
+                plugin
+        );
     }
 
     private void startWaveMonitoring(WaveConfig wave) {

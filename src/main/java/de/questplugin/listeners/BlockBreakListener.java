@@ -1,9 +1,8 @@
 package de.questplugin.listeners;
 
 import de.questplugin.OraxenQuestPlugin;
-import de.questplugin.utils.AEAPIHelper;
+import de.questplugin.utils.EnchantmentHelper;
 import org.bukkit.block.Block;
-import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -19,6 +18,8 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Listener für Block-Drops
+ *
+ * OPTIMIERT: Nutzt EnchantmentHelper statt duplizierte Logik
  */
 public class BlockBreakListener implements Listener {
 
@@ -48,7 +49,8 @@ public class BlockBreakListener implements Listener {
         ItemStack tool = player.getInventory().getItemInMainHand();
 
         // Silk Touch Check - keine Custom Drops
-        if (hasSilkTouch(tool)) {
+        // OPTIMIERT: EnchantmentHelper statt duplizierte Methode
+        if (EnchantmentHelper.hasSilkTouch(tool)) {
             if (debugMode) {
                 plugin.getPluginLogger().info("Silk Touch aktiv - keine Custom Drops");
                 plugin.getPluginLogger().info("==================");
@@ -56,7 +58,8 @@ public class BlockBreakListener implements Listener {
             return;
         }
 
-        int fortuneLevel = getFortuneLevel(tool);
+        // OPTIMIERT: EnchantmentHelper statt duplizierte Methode
+        int fortuneLevel = EnchantmentHelper.getFortuneLevel(tool);
 
         // VeinMiner Detection
         VeinMinerSession session = getOrCreateSession(player);
@@ -104,41 +107,6 @@ public class BlockBreakListener implements Listener {
         if (debugMode) {
             plugin.getPluginLogger().info("==================");
         }
-    }
-
-    /**
-     * Prüft ob Tool Silk Touch hat (Vanilla oder AE)
-     */
-    private boolean hasSilkTouch(ItemStack tool) {
-        if (tool == null || !tool.hasItemMeta()) {
-            return false;
-        }
-
-        // Vanilla Silk Touch
-        if (tool.containsEnchantment(Enchantment.SILK_TOUCH)) {
-            return true;
-        }
-
-        // AdvancedEnchantments Silk Touch
-        if (AEAPIHelper.isAvailable()) {
-            int aeSilkTouch = AEAPIHelper.getEnchantmentLevel(tool, "Silk Touch");
-            if (aeSilkTouch > 0) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private int getFortuneLevel(ItemStack tool) {
-        if (tool == null || !tool.hasItemMeta()) {
-            return 0;
-        }
-
-        int vanillaFortune = tool.getEnchantmentLevel(Enchantment.FORTUNE);
-        int aeFortune = AEAPIHelper.getFortuneLevel(tool);
-
-        return Math.max(vanillaFortune, aeFortune);
     }
 
     private VeinMinerSession getOrCreateSession(Player player) {

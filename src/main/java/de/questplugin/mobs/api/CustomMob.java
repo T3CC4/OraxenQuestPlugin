@@ -1,11 +1,11 @@
 package de.questplugin.mobs.api;
 
+import de.questplugin.enums.MobEquipmentSlot;
+import de.questplugin.utils.EquipmentHelper;
 import org.bukkit.NamespacedKey;
 import org.bukkit.entity.LivingEntity;
 
-import java.awt.*;
 import java.util.*;
-import java.util.List;
 
 import org.bukkit.attribute.Attribute;
 import org.bukkit.entity.Mob;
@@ -14,6 +14,8 @@ import org.bukkit.persistence.PersistentDataType;
 
 /**
  * Repräsentiert einen Custom Mob mit Equipment-Support
+ *
+ * OPTIMIERT: Nutzt EquipmentHelper statt duplizierte Equipment-Logik
  */
 public class CustomMob {
 
@@ -98,7 +100,7 @@ public class CustomMob {
         return 1.0;
     }
 
-    // ==================== EQUIPMENT SYSTEM ====================
+    // ==================== EQUIPMENT SYSTEM (OPTIMIERT) ====================
 
     /**
      * Gibt das Equipment des Mobs zurück (falls vorhanden)
@@ -112,19 +114,24 @@ public class CustomMob {
 
     /**
      * Prüft ob dieser Mob Equipment tragen kann
+     *
+     * OPTIMIERT: Nutzt EquipmentHelper
      */
     public boolean canWearEquipment() {
-        return entity instanceof Mob && entity.getEquipment() != null;
+        return EquipmentHelper.canWearEquipment(entity);
     }
 
     /**
      * Setzt Equipment in einem Slot
+     *
+     * OPTIMIERT: Nutzt EquipmentHelper für Slot-Setting
+     *
      * @param slot Equipment-Slot
      * @param item Das Item
      * @param dropChance Drop-Chance (0.0 - 1.0)
      * @return this für Chaining
      */
-    public CustomMob setEquipment(de.questplugin.enums.MobEquipmentSlot slot,
+    public CustomMob setEquipment(MobEquipmentSlot slot,
                                   org.bukkit.inventory.ItemStack item,
                                   float dropChance) {
         if (!canWearEquipment()) {
@@ -136,32 +143,9 @@ public class CustomMob {
         org.bukkit.inventory.EntityEquipment equipment = getEquipment();
         if (equipment == null) return this;
 
-        switch (slot) {
-            case MAIN_HAND:
-                equipment.setItemInMainHand(item);
-                equipment.setItemInMainHandDropChance(dropChance);
-                break;
-            case OFF_HAND:
-                equipment.setItemInOffHand(item);
-                equipment.setItemInOffHandDropChance(dropChance);
-                break;
-            case HELMET:
-                equipment.setHelmet(item);
-                equipment.setHelmetDropChance(dropChance);
-                break;
-            case CHESTPLATE:
-                equipment.setChestplate(item);
-                equipment.setChestplateDropChance(dropChance);
-                break;
-            case LEGGINGS:
-                equipment.setLeggings(item);
-                equipment.setLeggingsDropChance(dropChance);
-                break;
-            case BOOTS:
-                equipment.setBoots(item);
-                equipment.setBootsDropChance(dropChance);
-                break;
-        }
+        // OPTIMIERT: Nutze EquipmentHelper statt Switch-Case
+        EquipmentHelper.setEquipmentSlot(equipment, slot, item);
+        EquipmentHelper.setDropChance(equipment, slot, dropChance);
 
         api.getPlugin().getPluginLogger().debug("Equipment gesetzt: " + slot +
                 " → " + item.getType());
@@ -171,65 +155,62 @@ public class CustomMob {
     /**
      * Setzt Equipment mit Standard-Drop-Chance (0%)
      */
-    public CustomMob setEquipment(de.questplugin.enums.MobEquipmentSlot slot,
+    public CustomMob setEquipment(MobEquipmentSlot slot,
                                   org.bukkit.inventory.ItemStack item) {
         return setEquipment(slot, item, 0.0f);
     }
 
     /**
      * Wendet Equipment-Config auf den Mob an
+     *
+     * OPTIMIERT: Die gesamte Logik ist jetzt in EquipmentHelper!
+     *
      * @param equipmentManager Der Equipment-Manager
+     * @return this für Chaining
      */
     public CustomMob applyEquipmentConfig(de.questplugin.managers.MobEquipmentManager equipmentManager) {
         if (!canWearEquipment()) {
             return this;
         }
 
-        List<de.questplugin.managers.MobEquipmentManager.EquipmentEntry> equipment =
-                equipmentManager.getEquipment(entity.getType());
-
-        if (equipment.isEmpty()) {
-            return this;
-        }
-
-        java.util.concurrent.ThreadLocalRandom random =
-                java.util.concurrent.ThreadLocalRandom.current();
-
-        for (de.questplugin.managers.MobEquipmentManager.EquipmentEntry entry : equipment) {
-            double roll = random.nextDouble() * 100;
-
-            if (roll < entry.getChance()) {
-                org.bukkit.inventory.ItemStack item = buildOraxenItem(entry.getOraxenItemId());
-
-                if (item != null) {
-                    setEquipment(entry.getSlot(), item, entry.getDropChance());
-                }
-            }
-        }
+        // OPTIMIERT: Gesamte Equipment-Logik ist jetzt in EquipmentHelper
+        // Keine Duplikation mehr mit RaidInstance!
+        EquipmentHelper.applyEquipmentConfig(entity, equipmentManager, api.getPlugin());
 
         return this;
     }
 
     /**
-     * Baut Oraxen-Item
+     * Kopiert Equipment von diesem Mob zu einem anderen
+     *
+     * OPTIMIERT: Nutzt EquipmentHelper
+     *
+     * @param target Ziel-Mob
+     * @return true wenn erfolgreich
      */
-    private org.bukkit.inventory.ItemStack buildOraxenItem(String oraxenId) {
-        try {
-            io.th0rgal.oraxen.items.ItemBuilder builder =
-                    io.th0rgal.oraxen.api.OraxenItems.getItemById(oraxenId);
+    public boolean copyEquipmentTo(LivingEntity target) {
+        return EquipmentHelper.copyEquipment(entity, target);
+    }
 
-            if (builder != null) {
-                return builder.build();
-            }
+    /**
+     * Entfernt alles Equipment
+     *
+     * OPTIMIERT: Nutzt EquipmentHelper
+     *
+     * @return this für Chaining
+     */
+    public CustomMob clearEquipment() {
+        EquipmentHelper.clearEquipment(entity);
+        return this;
+    }
 
-            api.getPlugin().getPluginLogger().warn("Oraxen-Item nicht gefunden: " + oraxenId);
-            return null;
-
-        } catch (Exception e) {
-            api.getPlugin().getPluginLogger().warn("Fehler beim Laden von Item '" +
-                    oraxenId + "': " + e.getMessage());
-            return null;
-        }
+    /**
+     * Debug: Gibt Equipment-Info aus
+     *
+     * OPTIMIERT: Nutzt EquipmentHelper
+     */
+    public String getEquipmentInfo() {
+        return EquipmentHelper.getEquipmentInfo(entity);
     }
 
     // ==================== DEFEND SYSTEM ====================

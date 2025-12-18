@@ -2,12 +2,11 @@ package de.questplugin.listeners;
 
 import de.questplugin.OraxenQuestPlugin;
 import de.questplugin.mobs.api.CustomMob;
-import de.questplugin.utils.AEAPIHelper;
+import de.questplugin.utils.EnchantmentHelper;
 import de.questplugin.utils.DropMechanics;
 import io.th0rgal.oraxen.api.OraxenItems;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
-import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.Particle;
@@ -31,6 +30,8 @@ import java.util.concurrent.ThreadLocalRandom;
  * - Level-basierte Chance-Multiplikation
  * - Looting-Unterstützung
  * - Bessere Loot-Effekte
+ *
+ * OPTIMIERT: Nutzt EnchantmentHelper statt duplizierte Logik
  */
 public class EliteDropListener implements Listener {
 
@@ -167,12 +168,13 @@ public class EliteDropListener implements Listener {
         }
 
         // Hole Killer
+        // OPTIMIERT: EnchantmentHelper statt duplizierte Methode
         Player killer = entity.getKiller();
         int lootingLevel = 0;
 
         if (killer != null) {
             ItemStack weapon = killer.getInventory().getItemInMainHand();
-            lootingLevel = getLootingLevel(weapon);
+            lootingLevel = EnchantmentHelper.getLootingLevel(weapon);
         }
 
         plugin.getPluginLogger().debug("Looting: " + lootingLevel);
@@ -261,6 +263,7 @@ public class EliteDropListener implements Listener {
             double finalChance = baseChance * levelMultiplier;
 
             // 2. Looting-Boost (mit Diminishing Returns)
+            // OPTIMIERT: Nutzt DropMechanics direkt
             finalChance = DropMechanics.calculateDropChance(finalChance, lootingLevel);
 
             // 3. Roll
@@ -319,22 +322,6 @@ public class EliteDropListener implements Listener {
                 Sound.ENTITY_EXPERIENCE_ORB_PICKUP;
 
         location.getWorld().playSound(location, sound, 1.0f, 1.2f);
-    }
-
-    /**
-     * Holt Looting-Level (Vanilla + AE)
-     */
-    private int getLootingLevel(ItemStack weapon) {
-        if (weapon == null || !weapon.hasItemMeta()) {
-            return 0;
-        }
-
-        int vanillaLooting = weapon.getEnchantmentLevel(
-                org.bukkit.enchantments.Enchantment.LOOTING
-        );
-        int aeLooting = AEAPIHelper.getLootingLevel(weapon);
-
-        return Math.max(vanillaLooting, aeLooting);
     }
 
     /**
