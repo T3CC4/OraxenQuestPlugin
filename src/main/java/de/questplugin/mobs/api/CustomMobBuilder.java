@@ -246,15 +246,8 @@ public class CustomMobBuilder {
     // ==================== HELPER ====================
 
     /**
-     * Equipment-Entry für internen Gebrauch
-     */
-    private static class EquipmentEntry {
-        final ItemStack item;
-        final float dropChance;
-
-        EquipmentEntry(ItemStack item, float dropChance) {
-            this.item = item;
-            this.dropChance = dropChance;
-        }
+         * Equipment-Entry für internen Gebrauch
+         */
+        private record EquipmentEntry(ItemStack item, float dropChance) {
     }
 }

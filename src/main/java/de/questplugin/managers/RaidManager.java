@@ -3,9 +3,6 @@ package de.questplugin.managers;
 import de.questplugin.OraxenQuestPlugin;
 import de.questplugin.raid.RaidInstance;
 import de.questplugin.raid.RaidConfig;
-import org.bukkit.Bukkit;
-import org.bukkit.Location;
-import org.bukkit.boss.BossBar;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.entity.Player;
 

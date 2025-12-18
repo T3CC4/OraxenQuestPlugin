@@ -11,7 +11,6 @@ import java.io.File;
 import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
-import java.util.logging.Level;
 
 /**
  * Verwaltet persistente Daten (data.yml)

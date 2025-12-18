@@ -3,7 +3,6 @@ package de.questplugin.managers;
 import de.questplugin.OraxenQuestPlugin;
 import de.questplugin.enums.StructureType;
 import de.questplugin.utils.StructureHelper;
-import io.th0rgal.oraxen.api.OraxenItems;
 import org.bukkit.Location;
 import org.bukkit.block.Chest;
 import org.bukkit.configuration.ConfigurationSection;

@@ -5,7 +5,6 @@ import de.questplugin.enums.MobEquipmentSlot;
 import de.questplugin.utils.MobHelper;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.entity.EntityType;
-import org.bukkit.inventory.ItemStack;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;

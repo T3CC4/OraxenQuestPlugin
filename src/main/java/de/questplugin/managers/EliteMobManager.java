@@ -3,7 +3,6 @@ package de.questplugin.managers;
 import de.questplugin.OraxenQuestPlugin;
 import de.questplugin.enums.BiomeType;
 import de.questplugin.enums.MobEquipmentSlot;
-import de.questplugin.enums.MobType;
 import de.questplugin.mobs.api.CustomMob;
 import de.questplugin.mobs.api.CustomMobAPI;
 import de.questplugin.mobs.api.CustomMobBuilder;
