@@ -14,25 +14,26 @@ import java.util.stream.Collectors;
 
 /**
  * Helper-Klasse für Biome-Operationen
+ *
+ * OPTIMIERT: Nutzt EnumHelper für Standard-Operationen
  */
 public class BiomeHelper {
+
+    // EnumHelper für Standard-Operationen
+    private static final EnumHelper<BiomeType> HELPER = EnumHelper.of(BiomeType.class);
 
     /**
      * Gibt alle verfügbaren Biome-Namen zurück (für Command-Tab-Complete)
      */
     public static List<String> getAllBiomeNames() {
-        List<String> names = new ArrayList<>();
-        for (BiomeType type : BiomeType.values()) {
-            names.add(type.name().toLowerCase());
-        }
-        return names;
+        return HELPER.getAllNames();
     }
 
     /**
      * Findet BiomeType anhand des Namens (case-insensitive)
      */
     public static BiomeType fromString(String name) {
-        return BiomeType.fromString(name);
+        return HELPER.fromString(name);
     }
 
     /**
@@ -70,9 +71,16 @@ public class BiomeHelper {
         component = appendCategoryComponent(component, BiomeType.BiomeCategory.FOREST, NamedTextColor.DARK_GREEN);
         component = appendCategoryComponent(component, BiomeType.BiomeCategory.TAIGA, NamedTextColor.AQUA);
         component = appendCategoryComponent(component, BiomeType.BiomeCategory.JUNGLE, NamedTextColor.GREEN);
+        component = appendCategoryComponent(component, BiomeType.BiomeCategory.SAVANNA, NamedTextColor.GOLD);
         component = appendCategoryComponent(component, BiomeType.BiomeCategory.DESERT, NamedTextColor.GOLD);
+        component = appendCategoryComponent(component, BiomeType.BiomeCategory.BADLANDS, NamedTextColor.RED);
+        component = appendCategoryComponent(component, BiomeType.BiomeCategory.SWAMP, NamedTextColor.DARK_GREEN);
         component = appendCategoryComponent(component, BiomeType.BiomeCategory.OCEAN, NamedTextColor.BLUE);
+        component = appendCategoryComponent(component, BiomeType.BiomeCategory.BEACH, NamedTextColor.YELLOW);
+        component = appendCategoryComponent(component, BiomeType.BiomeCategory.RIVER, NamedTextColor.BLUE);
         component = appendCategoryComponent(component, BiomeType.BiomeCategory.MOUNTAIN, NamedTextColor.GRAY);
+        component = appendCategoryComponent(component, BiomeType.BiomeCategory.SNOWY, NamedTextColor.WHITE);
+        component = appendCategoryComponent(component, BiomeType.BiomeCategory.SPECIAL, NamedTextColor.LIGHT_PURPLE);
 
         component = component.append(Component.newline());
 
@@ -108,9 +116,16 @@ public class BiomeHelper {
         appendCategory(sb, BiomeType.BiomeCategory.FOREST, "§2");
         appendCategory(sb, BiomeType.BiomeCategory.TAIGA, "§b");
         appendCategory(sb, BiomeType.BiomeCategory.JUNGLE, "§a");
+        appendCategory(sb, BiomeType.BiomeCategory.SAVANNA, "§6");
         appendCategory(sb, BiomeType.BiomeCategory.DESERT, "§6");
+        appendCategory(sb, BiomeType.BiomeCategory.BADLANDS, "§c");
+        appendCategory(sb, BiomeType.BiomeCategory.SWAMP, "§2");
         appendCategory(sb, BiomeType.BiomeCategory.OCEAN, "§9");
+        appendCategory(sb, BiomeType.BiomeCategory.BEACH, "§e");
+        appendCategory(sb, BiomeType.BiomeCategory.RIVER, "§9");
         appendCategory(sb, BiomeType.BiomeCategory.MOUNTAIN, "§7");
+        appendCategory(sb, BiomeType.BiomeCategory.SNOWY, "§f");
+        appendCategory(sb, BiomeType.BiomeCategory.SPECIAL, "§d");
 
         sb.append("\n");
 
@@ -182,7 +197,7 @@ public class BiomeHelper {
             case "underground":
                 return BiomeType.getUndergroundBiomes();
             default:
-                return BiomeType.values();
+                return HELPER.getAll();
         }
     }
 
@@ -287,7 +302,7 @@ public class BiomeHelper {
             return true;
         }
 
-        return BiomeType.fromString(biomeName) != null;
+        return HELPER.isValid(biomeName);
     }
 
     /**
@@ -298,6 +313,6 @@ public class BiomeHelper {
             return null;
         }
 
-        return BiomeType.fromString(biomeName);
+        return fromString(biomeName);
     }
 }

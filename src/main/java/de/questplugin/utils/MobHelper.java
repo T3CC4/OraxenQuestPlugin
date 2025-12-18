@@ -14,27 +14,25 @@ import java.util.stream.Collectors;
 /**
  * Helper-Klasse für Mob-Operationen
  *
- * PAPER OPTIMIZATION:
- * - Adventure Components statt ChatColor
+ * OPTIMIERT: Nutzt EnumHelper für Standard-Operationen
  */
 public class MobHelper {
+
+    // EnumHelper für Standard-Operationen
+    private static final EnumHelper<MobType> HELPER = EnumHelper.of(MobType.class);
 
     /**
      * Gibt alle verfügbaren Mob-Namen zurück (für Command-Tab-Complete)
      */
     public static List<String> getAllMobNames() {
-        List<String> names = new ArrayList<>();
-        for (MobType type : MobType.values()) {
-            names.add(type.name().toLowerCase());
-        }
-        return names;
+        return HELPER.getAllNames();
     }
 
     /**
      * Findet MobType anhand des Namens (case-insensitive)
      */
     public static MobType fromString(String name) {
-        return MobType.fromString(name);
+        return HELPER.fromString(name);
     }
 
     /**
@@ -103,6 +101,12 @@ public class MobHelper {
                 .append(Component.text("=== TAMEABLE ===", NamedTextColor.BLUE, TextDecoration.BOLD))
                 .appendNewline()
                 .append(buildCategoryComponent(MobType.MobCategory.TAMEABLE, NamedTextColor.BLUE))
+                .appendNewline()
+
+                // UTILITY
+                .append(Component.text("=== UTILITY ===", NamedTextColor.GRAY, TextDecoration.BOLD))
+                .appendNewline()
+                .append(buildCategoryComponent(MobType.MobCategory.UTILITY, NamedTextColor.GRAY))
 
                 .build();
     }

@@ -376,19 +376,8 @@ public class EliteDropListener implements Listener {
     }
 
     /**
-     * Elite-Drop Entry
-     */
-    private static class EliteDropEntry {
-        final String oraxenItemId;
-        final double chance;
-        final int minAmount;
-        final int maxAmount;
-
-        EliteDropEntry(String oraxenItemId, double chance, int minAmount, int maxAmount) {
-            this.oraxenItemId = oraxenItemId;
-            this.chance = chance;
-            this.minAmount = minAmount;
-            this.maxAmount = maxAmount;
-        }
+         * Elite-Drop Entry
+         */
+        private record EliteDropEntry(String oraxenItemId, double chance, int minAmount, int maxAmount) {
     }
 }

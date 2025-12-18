@@ -54,12 +54,8 @@ public abstract class BaseManager {
         if (oraxenItemId == null || oraxenItemId.isEmpty()) {
             return false;
         }
-
         try {
-            io.th0rgal.oraxen.items.ItemBuilder builder =
-                    io.th0rgal.oraxen.api.OraxenItems.getItemById(oraxenItemId);
-            return builder != null;
-
+            return io.th0rgal.oraxen.api.OraxenItems.exists(oraxenItemId);
         } catch (Exception e) {
             return false;
         }

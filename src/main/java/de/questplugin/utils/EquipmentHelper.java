@@ -78,7 +78,7 @@ public class EquipmentHelper {
             }
 
             if (success) {
-                ItemStack item = buildOraxenItem(entry.getOraxenItemId(), plugin);
+                ItemStack item = OraxenItemHelper.buildItem(entry.getOraxenItemId(), plugin);
 
                 if (item != null) {
                     // Setze Item in Slot
@@ -174,37 +174,6 @@ public class EquipmentHelper {
      */
     public static boolean canWearEquipment(LivingEntity mob) {
         return mob instanceof Mob && mob.getEquipment() != null;
-    }
-
-    /**
-     * Baut Oraxen-Item aus ID
-     *
-     * @param oraxenItemId Die Oraxen-Item ID
-     * @param plugin Plugin-Instanz für Logging
-     * @return ItemStack oder null
-     */
-    private static ItemStack buildOraxenItem(String oraxenItemId, OraxenQuestPlugin plugin) {
-        if (oraxenItemId == null || oraxenItemId.isEmpty()) {
-            plugin.getPluginLogger().warn("Oraxen-Item ID ist null oder leer!");
-            return null;
-        }
-
-        try {
-            io.th0rgal.oraxen.items.ItemBuilder builder =
-                    OraxenItems.getItemById(oraxenItemId);
-
-            if (builder != null) {
-                return builder.build();
-            }
-
-            plugin.getPluginLogger().warn("Oraxen-Item nicht gefunden: " + oraxenItemId);
-            return null;
-
-        } catch (Exception e) {
-            plugin.getPluginLogger().warn("Fehler beim Laden von Item '" +
-                    oraxenItemId + "': " + e.getMessage());
-            return null;
-        }
     }
 
     /**
