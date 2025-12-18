@@ -90,7 +90,7 @@ public class WaveConfig {
         private final double damage;
         private final String customName;
         private final boolean hasEquipment;
-        private final List<String> abilities; // NEU: Abilities
+        private final List<String> abilities;
 
         private MobSpawn(EntityType type, int amount, double health, double damage,
                          String customName, boolean hasEquipment, List<String> abilities) {
@@ -125,7 +125,6 @@ public class WaveConfig {
                 String customName = section.getString("custom-name");
                 boolean hasEquipment = section.getBoolean("use-equipment", false);
 
-                // NEU: Abilities laden
                 List<String> abilities = section.getStringList("abilities");
 
                 plugin.getPluginLogger().debug("Mob geladen: " + type +

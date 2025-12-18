@@ -3,6 +3,8 @@ package de.questplugin.listeners;
 import de.questplugin.OraxenQuestPlugin;
 import de.questplugin.managers.QuestManager;
 import io.th0rgal.oraxen.api.OraxenItems;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.entity.AbstractVillager;
@@ -120,12 +122,20 @@ public class TradeCompleteListener implements Listener {
         Player player = (Player) event.getPlayer();
         Villager villager = (Villager) event.getVillager();
 
-        // Quest-Villager prüfen
+        // Quest-Villager prüfen (Legacy String für Config-Kompatibilität)
         String expectedName = ChatColor.translateAlternateColorCodes('&',
                 plugin.getConfig().getString("quest-npc.name", "&6Quest Händler"));
 
-        if (villager.getCustomName() == null ||
-                !villager.getCustomName().equals(expectedName)) {
+        Component villagerName = villager.customName();
+        if (villagerName == null) return;
+
+        // Vergleiche mit legacy String (Paper serialisiert Component zu Legacy für Vergleich)
+        String villagerNameLegacy = org.bukkit.ChatColor.stripColor(
+                net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer.legacySection()
+                        .serialize(villagerName));
+        String expectedNameStripped = org.bukkit.ChatColor.stripColor(expectedName);
+
+        if (!villagerNameLegacy.equals(expectedNameStripped)) {
             return;
         }
 
@@ -134,7 +144,7 @@ public class TradeCompleteListener implements Listener {
 
         // Validierung
         if (quest == null) {
-            player.sendMessage(ChatColor.RED + "Keine Quest verfügbar!");
+            player.sendMessage(Component.text("Keine Quest verfügbar!", NamedTextColor.RED));
             event.setCancelled(true);
             return;
         }
@@ -142,8 +152,9 @@ public class TradeCompleteListener implements Listener {
         if (!questManager.isQuestAvailable()) {
             long timeLeft = questManager.getTimeUntilAvailable();
             long minutes = timeLeft / (60 * 1000);
-            player.sendMessage(ChatColor.RED + "Quest im Cooldown!");
-            player.sendMessage(ChatColor.YELLOW + "Verfügbar in: " + minutes + " Minuten");
+            player.sendMessage(Component.text("Quest im Cooldown!", NamedTextColor.RED));
+            player.sendMessage(Component.text("Verfügbar in: ", NamedTextColor.YELLOW)
+                    .append(Component.text(minutes + " Minuten")));
             event.setCancelled(true);
             return;
         }
@@ -158,7 +169,7 @@ public class TradeCompleteListener implements Listener {
 
         // Prüfe ob bereits abgeschlossen
         if (questManager.hasCompletedCurrentQuest(player.getUniqueId())) {
-            player.sendMessage(ChatColor.RED + "Du hast diese Quest bereits abgeschlossen!");
+            player.sendMessage(Component.text("Du hast diese Quest bereits abgeschlossen!", NamedTextColor.RED));
             event.setCancelled(true);
             return;
         }
@@ -169,11 +180,11 @@ public class TradeCompleteListener implements Listener {
         Bukkit.getScheduler().runTask(plugin, () -> {
             questManager.completeQuestForPlayer(player);
 
-            player.sendMessage(ChatColor.GREEN + "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-            player.sendMessage(ChatColor.GREEN + "✔ Quest abgeschlossen!");
-            player.sendMessage(ChatColor.YELLOW + "Belohnung: " + ChatColor.WHITE +
-                    quest.getRewardItem());
-            player.sendMessage(ChatColor.GREEN + "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            player.sendMessage(Component.text("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", NamedTextColor.GREEN));
+            player.sendMessage(Component.text("✔ Quest abgeschlossen!", NamedTextColor.GREEN));
+            player.sendMessage(Component.text("Belohnung: ", NamedTextColor.YELLOW)
+                    .append(Component.text(quest.getRewardItem(), NamedTextColor.WHITE)));
+            player.sendMessage(Component.text("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", NamedTextColor.GREEN));
         });
     }
 }

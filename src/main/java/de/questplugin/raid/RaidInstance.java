@@ -5,12 +5,11 @@ import de.questplugin.managers.MobEquipmentManager;
 import de.questplugin.mobs.api.CustomMob;
 import de.questplugin.mobs.api.CustomMobAPI;
 import de.questplugin.mobs.api.CustomMobBuilder;
-import de.questplugin.utils.MobHelper;
+import net.kyori.adventure.bossbar.BossBar;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.format.TextDecoration;
 import org.bukkit.*;
-import org.bukkit.attribute.Attribute;
-import org.bukkit.boss.BarColor;
-import org.bukkit.boss.BarStyle;
-import org.bukkit.boss.BossBar;
 import org.bukkit.entity.*;
 import org.bukkit.inventory.EntityEquipment;
 import org.bukkit.inventory.ItemStack;
@@ -72,23 +71,24 @@ public class RaidInstance {
     }
 
     private void createBossBar() {
-        String title = ChatColor.translateAlternateColorCodes('&',
-                config.getDisplayName() + " &7- Vorbereitung");
+        Component title = Component.text(ChatColor.translateAlternateColorCodes('&', config.getDisplayName()))
+                .append(Component.text(" - Vorbereitung", NamedTextColor.GRAY));
 
-        bossBar = Bukkit.createBossBar(title, BarColor.YELLOW, BarStyle.SOLID);
-        bossBar.addPlayer(player);
-        bossBar.setVisible(true);
+        bossBar = BossBar.bossBar(title, 1.0f, BossBar.Color.YELLOW, BossBar.Overlay.PROGRESS);
+        player.showBossBar(bossBar);
     }
 
     private void startPreparation() {
         int prepTime = config.getPreparationTime();
 
-        player.sendMessage(ChatColor.GOLD + "━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        player.sendMessage(ChatColor.translateAlternateColorCodes('&', config.getDisplayName()));
-        player.sendMessage(ChatColor.YELLOW + "Vorbereitung: " + prepTime + " Sekunden");
-        player.sendMessage(ChatColor.GRAY + "Wellen: " + config.getWaves().size());
-        player.sendMessage(ChatColor.AQUA + "Andere Spieler können beitreten!");
-        player.sendMessage(ChatColor.GOLD + "━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        player.sendMessage(Component.text("━━━━━━━━━━━━━━━━━━━━━━━━━━", NamedTextColor.GOLD));
+        player.sendMessage(Component.text(ChatColor.translateAlternateColorCodes('&', config.getDisplayName())));
+        player.sendMessage(Component.text("Vorbereitung: ", NamedTextColor.YELLOW)
+                .append(Component.text(prepTime + " Sekunden")));
+        player.sendMessage(Component.text("Wellen: ", NamedTextColor.GRAY)
+                .append(Component.text(config.getWaves().size())));
+        player.sendMessage(Component.text("Andere Spieler können beitreten!", NamedTextColor.AQUA));
+        player.sendMessage(Component.text("━━━━━━━━━━━━━━━━━━━━━━━━━━", NamedTextColor.GOLD));
 
         player.playSound(player.getLocation(), Sound.ENTITY_ENDER_DRAGON_GROWL, 1.0f, 1.0f);
 
@@ -101,15 +101,17 @@ public class RaidInstance {
             }
 
             countdown[0]--;
-            double progress = (double) countdown[0] / prepTime;
-            bossBar.setProgress(Math.max(0, Math.min(1, progress)));
+            float progress = (float) countdown[0] / prepTime;
+            bossBar.progress(Math.max(0, Math.min(1, progress)));
 
             updateParticipants();
 
-            String title = ChatColor.YELLOW + "Vorbereitung: " + countdown[0] + "s " +
-                    ChatColor.GRAY + "[" + ChatColor.GREEN + participants.size() +
-                    ChatColor.GRAY + " Spieler]";
-            bossBar.setTitle(title);
+            Component title = Component.text("Vorbereitung: ", NamedTextColor.YELLOW)
+                    .append(Component.text(countdown[0] + "s "))
+                    .append(Component.text("[", NamedTextColor.GRAY))
+                    .append(Component.text(participants.size(), NamedTextColor.GREEN))
+                    .append(Component.text(" Spieler]", NamedTextColor.GRAY));
+            bossBar.name(title);
 
             if (countdown[0] <= 10 && countdown[0] >= 1) {
                 playParticipantSound(Sound.BLOCK_NOTE_BLOCK_HAT, 1.0f, 1.5f);
@@ -140,9 +142,9 @@ public class RaidInstance {
         plugin.getPluginLogger().info("Schwierigkeit: " + playerCount + " Spieler = " +
                 String.format("%.1f", difficultyMultiplier) + "x");
 
-        sendParticipantMessage(ChatColor.YELLOW + "Schwierigkeit: " +
-                ChatColor.RED + String.format("%.1f", difficultyMultiplier) + "x " +
-                ChatColor.GRAY + "(" + playerCount + " Spieler)");
+        sendParticipantMessage(Component.text("Schwierigkeit: ", NamedTextColor.YELLOW)
+                .append(Component.text(String.format("%.1f", difficultyMultiplier) + "x ", NamedTextColor.RED))
+                .append(Component.text("(" + playerCount + " Spieler)", NamedTextColor.GRAY)));
     }
 
     private void startNextWave() {
@@ -160,14 +162,14 @@ public class RaidInstance {
         plugin.getPluginLogger().debug("Spieler: " + participants.size());
         plugin.getPluginLogger().debug("Schwierigkeit: " + difficultyMultiplier + "x");
 
-        String title = ChatColor.translateAlternateColorCodes('&',
-                config.getDisplayName() + " &7- " + wave.getDisplayName());
-        bossBar.setTitle(title);
-        bossBar.setColor(BarColor.RED);
-        bossBar.setProgress(1.0);
+        Component title = Component.text(ChatColor.translateAlternateColorCodes('&', config.getDisplayName()))
+                .append(Component.text(" - " + wave.getDisplayName(), NamedTextColor.GRAY));
+        bossBar.name(title);
+        bossBar.color(BossBar.Color.RED);
+        bossBar.progress(1.0f);
 
-        sendParticipantMessage("");
-        sendParticipantMessage(ChatColor.translateAlternateColorCodes('&', wave.getDisplayName()));
+        sendParticipantMessage(Component.empty());
+        sendParticipantMessage(Component.text(ChatColor.translateAlternateColorCodes('&', wave.getDisplayName())));
         playParticipantSound(Sound.ENTITY_WITHER_SPAWN, 1.0f, 1.0f);
 
         spawnWave(wave);
@@ -415,14 +417,17 @@ public class RaidInstance {
                 return entity == null || entity.isDead();
             });
 
-            double progress = (double) aliveMobs.size() / totalMobs;
-            bossBar.setProgress(Math.max(0, Math.min(1, progress)));
+            float progress = (float) aliveMobs.size() / totalMobs;
+            bossBar.progress(Math.max(0, Math.min(1, progress)));
 
-            String title = ChatColor.translateAlternateColorCodes('&',
-                    config.getDisplayName() + " &7- " + wave.getDisplayName());
-            bossBar.setTitle(title + ChatColor.GRAY + " [" +
-                    ChatColor.RED + aliveMobs.size() + ChatColor.GRAY + "/" +
-                    ChatColor.WHITE + totalMobs + ChatColor.GRAY + "]");
+            Component title = Component.text(ChatColor.translateAlternateColorCodes('&', config.getDisplayName()))
+                    .append(Component.text(" - " + wave.getDisplayName(), NamedTextColor.GRAY))
+                    .append(Component.text(" [", NamedTextColor.GRAY))
+                    .append(Component.text(aliveMobs.size(), NamedTextColor.RED))
+                    .append(Component.text("/", NamedTextColor.GRAY))
+                    .append(Component.text(totalMobs, NamedTextColor.WHITE))
+                    .append(Component.text("]", NamedTextColor.GRAY));
+            bossBar.name(title);
 
             updateParticipants();
 
@@ -435,7 +440,8 @@ public class RaidInstance {
     }
 
     private void onWaveComplete(WaveConfig wave) {
-        sendParticipantMessage(ChatColor.GREEN + "✓ " + wave.getDisplayName() + " abgeschlossen!");
+        sendParticipantMessage(Component.text("✓ ", NamedTextColor.GREEN)
+                .append(Component.text(wave.getDisplayName() + " abgeschlossen!")));
         playParticipantSound(Sound.UI_TOAST_CHALLENGE_COMPLETE, 1.0f, 1.0f);
 
         if (currentWave >= config.getWaves().size()) {
@@ -445,9 +451,9 @@ public class RaidInstance {
 
         int delay = wave.getDelayAfterWave();
         if (delay > 0) {
-            bossBar.setTitle(ChatColor.YELLOW + "Nächste Welle in " + delay + "s");
-            bossBar.setColor(BarColor.YELLOW);
-            bossBar.setProgress(1.0);
+            bossBar.name(Component.text("Nächste Welle in " + delay + "s", NamedTextColor.YELLOW));
+            bossBar.color(BossBar.Color.YELLOW);
+            bossBar.progress(1.0f);
 
             Bukkit.getScheduler().runTaskLater(plugin, this::startNextWave, delay * 20L);
         } else {
@@ -458,14 +464,15 @@ public class RaidInstance {
     private void complete() {
         state = RaidState.COMPLETED;
 
-        sendParticipantMessage("");
-        sendParticipantMessage(ChatColor.GOLD + "━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        sendParticipantMessage(ChatColor.GREEN + "✔ RAID ABGESCHLOSSEN!");
-        sendParticipantMessage(ChatColor.translateAlternateColorCodes('&', config.getDisplayName()));
-        sendParticipantMessage(ChatColor.AQUA + "Teilnehmer: " + participants.size());
-        sendParticipantMessage(ChatColor.YELLOW + "Schwierigkeit: " +
-                String.format("%.1f", difficultyMultiplier) + "x");
-        sendParticipantMessage(ChatColor.GOLD + "━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        sendParticipantMessage(Component.empty());
+        sendParticipantMessage(Component.text("━━━━━━━━━━━━━━━━━━━━━━━━━━", NamedTextColor.GOLD));
+        sendParticipantMessage(Component.text("✔ RAID ABGESCHLOSSEN!", NamedTextColor.GREEN));
+        sendParticipantMessage(Component.text(ChatColor.translateAlternateColorCodes('&', config.getDisplayName())));
+        sendParticipantMessage(Component.text("Teilnehmer: ", NamedTextColor.AQUA)
+                .append(Component.text(participants.size())));
+        sendParticipantMessage(Component.text("Schwierigkeit: ", NamedTextColor.YELLOW)
+                .append(Component.text(String.format("%.1f", difficultyMultiplier) + "x")));
+        sendParticipantMessage(Component.text("━━━━━━━━━━━━━━━━━━━━━━━━━━", NamedTextColor.GOLD));
 
         playParticipantSound(Sound.UI_TOAST_CHALLENGE_COMPLETE, 1.0f, 0.8f);
 
@@ -484,7 +491,7 @@ public class RaidInstance {
     public void cancel(String reason) {
         state = RaidState.CANCELLED;
 
-        sendParticipantMessage(ChatColor.RED + "Raid abgebrochen: " + reason);
+        sendParticipantMessage(Component.text("Raid abgebrochen: " + reason, NamedTextColor.RED));
         playParticipantSound(Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
 
         cleanup();
@@ -497,7 +504,12 @@ public class RaidInstance {
         }
 
         if (bossBar != null) {
-            bossBar.removeAll();
+            for (UUID uuid : participants) {
+                Player p = Bukkit.getPlayer(uuid);
+                if (p != null) {
+                    p.hideBossBar(bossBar);
+                }
+            }
             bossBar = null;
         }
 
@@ -543,8 +555,8 @@ public class RaidInstance {
                     onParticipantJoin(p);
                 }
 
-                if (bossBar != null && !bossBar.getPlayers().contains(p)) {
-                    bossBar.addPlayer(p);
+                if (bossBar != null) {
+                    p.showBossBar(bossBar);
                 }
             }
         }
@@ -555,7 +567,7 @@ public class RaidInstance {
                 if (p != null && !uuid.equals(player.getUniqueId())) {
                     onParticipantLeave(p);
                     if (bossBar != null) {
-                        bossBar.removePlayer(p);
+                        p.hideBossBar(bossBar);
                     }
                 }
             }
@@ -566,21 +578,22 @@ public class RaidInstance {
     }
 
     private void onParticipantJoin(Player participant) {
-        participant.sendMessage(ChatColor.GOLD + "━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        participant.sendMessage(ChatColor.GREEN + "Du nimmst am Raid teil!");
-        participant.sendMessage(ChatColor.GRAY + "Host: " + ChatColor.WHITE + player.getName());
-        participant.sendMessage(ChatColor.translateAlternateColorCodes('&', config.getDisplayName()));
-        participant.sendMessage(ChatColor.YELLOW + "Die Schwierigkeit wird erhöht!");
-        participant.sendMessage(ChatColor.AQUA + "Du erhältst auch Belohnungen!");
-        participant.sendMessage(ChatColor.GOLD + "━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        participant.sendMessage(Component.text("━━━━━━━━━━━━━━━━━━━━━━━━━━", NamedTextColor.GOLD));
+        participant.sendMessage(Component.text("Du nimmst am Raid teil!", NamedTextColor.GREEN));
+        participant.sendMessage(Component.text("Host: ", NamedTextColor.GRAY)
+                .append(Component.text(player.getName(), NamedTextColor.WHITE)));
+        participant.sendMessage(Component.text(ChatColor.translateAlternateColorCodes('&', config.getDisplayName())));
+        participant.sendMessage(Component.text("Die Schwierigkeit wird erhöht!", NamedTextColor.YELLOW));
+        participant.sendMessage(Component.text("Du erhältst auch Belohnungen!", NamedTextColor.AQUA));
+        participant.sendMessage(Component.text("━━━━━━━━━━━━━━━━━━━━━━━━━━", NamedTextColor.GOLD));
         participant.playSound(participant.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 1.2f);
 
-        sendParticipantMessage(ChatColor.GREEN + participant.getName() + " nimmt am Raid teil!");
+        sendParticipantMessage(Component.text(participant.getName() + " nimmt am Raid teil!", NamedTextColor.GREEN));
     }
 
     private void onParticipantLeave(Player participant) {
-        participant.sendMessage(ChatColor.RED + "Du bist zu weit vom Raid entfernt!");
-        sendParticipantMessage(ChatColor.RED + participant.getName() + " hat den Raid verlassen!");
+        participant.sendMessage(Component.text("Du bist zu weit vom Raid entfernt!", NamedTextColor.RED));
+        sendParticipantMessage(Component.text(participant.getName() + " hat den Raid verlassen!", NamedTextColor.RED));
     }
 
     private void playParticipantSound(Sound sound, float volume, float pitch) {
@@ -592,7 +605,7 @@ public class RaidInstance {
         }
     }
 
-    private void sendParticipantMessage(String message) {
+    private void sendParticipantMessage(Component message) {
         for (UUID uuid : participants) {
             Player p = Bukkit.getPlayer(uuid);
             if (p != null && p.isOnline()) {

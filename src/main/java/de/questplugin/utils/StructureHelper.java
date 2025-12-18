@@ -1,6 +1,9 @@
 package de.questplugin.utils;
 
 import de.questplugin.enums.StructureType;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.format.TextDecoration;
 import org.bukkit.loot.LootTables;
 
 import java.util.ArrayList;
@@ -8,6 +11,9 @@ import java.util.List;
 
 /**
  * Helper-Klasse für Struktur-LootTable Operationen
+ *
+ * PAPER OPTIMIZATION:
+ * - Adventure Components statt ChatColor
  */
 public class StructureHelper {
 
@@ -51,24 +57,53 @@ public class StructureHelper {
 
     /**
      * Gibt formatierte Liste aller Strukturen aus (für Hilfe-Commands)
+     *
+     * PAPER: Nutzt Adventure Components statt ChatColor
      */
-    public static String getFormattedStructureList() {
-        StringBuilder sb = new StringBuilder();
+    public static Component getFormattedStructureList() {
+        return Component.text()
+                // OVERWORLD
+                .append(Component.text("=== OVERWORLD ===", NamedTextColor.GOLD, TextDecoration.BOLD))
+                .appendNewline()
 
-        sb.append("§6=== OVERWORLD ===§r\n");
-        sb.append("§eUnterwasser:§r BURIED_TREASURE, SHIPWRECK_*, OCEAN_RUIN_*\n");
-        sb.append("§eWüste:§r DESERT_PYRAMID\n");
-        sb.append("§eDschungel:§r JUNGLE_TEMPLE\n");
-        sb.append("§eDörfer:§r VILLAGE_* (WEAPONSMITH, TOOLSMITH, etc.)\n");
-        sb.append("§eAndere:§r MINESHAFT, STRONGHOLD_*, WOODLAND_MANSION, ANCIENT_CITY\n\n");
+                .append(Component.text("Unterwasser: ", NamedTextColor.YELLOW))
+                .append(Component.text("BURIED_TREASURE, SHIPWRECK_*, OCEAN_RUIN_*", NamedTextColor.WHITE))
+                .appendNewline()
 
-        sb.append("§c=== NETHER ===§r\n");
-        sb.append("§eStructuren:§r NETHER_BRIDGE, BASTION_*\n\n");
+                .append(Component.text("Wüste: ", NamedTextColor.YELLOW))
+                .append(Component.text("DESERT_PYRAMID", NamedTextColor.WHITE))
+                .appendNewline()
 
-        sb.append("§d=== END ===§r\n");
-        sb.append("§eStructuren:§r END_CITY_TREASURE\n");
+                .append(Component.text("Dschungel: ", NamedTextColor.YELLOW))
+                .append(Component.text("JUNGLE_TEMPLE", NamedTextColor.WHITE))
+                .appendNewline()
 
-        return sb.toString();
+                .append(Component.text("Dörfer: ", NamedTextColor.YELLOW))
+                .append(Component.text("VILLAGE_* (WEAPONSMITH, TOOLSMITH, etc.)", NamedTextColor.WHITE))
+                .appendNewline()
+
+                .append(Component.text("Andere: ", NamedTextColor.YELLOW))
+                .append(Component.text("MINESHAFT, STRONGHOLD_*, WOODLAND_MANSION, ANCIENT_CITY", NamedTextColor.WHITE))
+                .appendNewline()
+                .appendNewline()
+
+                // NETHER
+                .append(Component.text("=== NETHER ===", NamedTextColor.RED, TextDecoration.BOLD))
+                .appendNewline()
+
+                .append(Component.text("Strukturen: ", NamedTextColor.YELLOW))
+                .append(Component.text("NETHER_BRIDGE, BASTION_*", NamedTextColor.WHITE))
+                .appendNewline()
+                .appendNewline()
+
+                // END
+                .append(Component.text("=== END ===", NamedTextColor.LIGHT_PURPLE, TextDecoration.BOLD))
+                .appendNewline()
+
+                .append(Component.text("Strukturen: ", NamedTextColor.YELLOW))
+                .append(Component.text("END_CITY_TREASURE", NamedTextColor.WHITE))
+
+                .build();
     }
 
     /**

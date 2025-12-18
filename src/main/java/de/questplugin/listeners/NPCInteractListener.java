@@ -3,6 +3,8 @@ package de.questplugin.listeners;
 import de.questplugin.OraxenQuestPlugin;
 import de.questplugin.managers.QuestManager;
 import io.th0rgal.oraxen.api.OraxenItems;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.ChatColor;
 import org.bukkit.entity.*;
 import org.bukkit.event.EventHandler;
@@ -20,14 +22,14 @@ import java.util.concurrent.TimeUnit;
 public class NPCInteractListener implements Listener {
 
     private final OraxenQuestPlugin plugin;
-    private final String npcName;
+    private final String npcNameLegacy;
     private final EntityType npcType;
 
     public NPCInteractListener(OraxenQuestPlugin plugin) {
         this.plugin = plugin;
 
         // Cache Config-Werte (Performance)
-        this.npcName = ChatColor.translateAlternateColorCodes('&',
+        this.npcNameLegacy = ChatColor.translateAlternateColorCodes('&',
                 plugin.getConfig().getString("quest-npc.name", "&6Quest Händler"));
 
         try {
@@ -58,13 +60,21 @@ public class NPCInteractListener implements Listener {
     }
 
     /**
-     * Prüft ob Entity der Quest-NPC ist
+     * Prüft ob Entity der Quest-NPC ist (Paper Component API)
      */
     private boolean isQuestNPC(Entity entity) {
-        if (entity.getCustomName() == null) {
+        Component customName = entity.customName();
+        if (customName == null) {
             return false;
         }
-        return entity.getCustomName().equals(npcName);
+
+        // Vergleiche mit legacy String (Config-Kompatibilität)
+        String entityNameStripped = ChatColor.stripColor(
+                net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer.legacySection()
+                        .serialize(customName));
+        String expectedNameStripped = ChatColor.stripColor(npcNameLegacy);
+
+        return entityNameStripped.equals(expectedNameStripped);
     }
 
     /**
@@ -101,15 +111,16 @@ public class NPCInteractListener implements Listener {
         QuestManager.Quest quest = questManager.getCurrentQuest();
 
         if (quest == null) {
-            player.sendMessage(ChatColor.RED + "Momentan sind keine Quests verfügbar!");
-            player.sendMessage(ChatColor.GRAY + "Kontaktiere einen Administrator.");
+            player.sendMessage(Component.text("Momentan sind keine Quests verfügbar!", NamedTextColor.RED));
+            player.sendMessage(Component.text("Kontaktiere einen Administrator.", NamedTextColor.GRAY));
         } else {
             long timeLeft = questManager.getTimeUntilAvailable();
             long hours = TimeUnit.MILLISECONDS.toHours(timeLeft);
             long minutes = TimeUnit.MILLISECONDS.toMinutes(timeLeft) % 60;
 
-            player.sendMessage(ChatColor.RED + "Quest im Cooldown!");
-            player.sendMessage(ChatColor.YELLOW + "Verfügbar in: " + hours + "h " + minutes + "min");
+            player.sendMessage(Component.text("Quest im Cooldown!", NamedTextColor.RED));
+            player.sendMessage(Component.text("Verfügbar in: ", NamedTextColor.YELLOW)
+                    .append(Component.text(hours + "h " + minutes + "min")));
         }
 
         event.setCancelled(true); // Verhindere GUI-Öffnung
@@ -119,8 +130,8 @@ public class NPCInteractListener implements Listener {
      * Keine Quest konfiguriert
      */
     private void handleNoQuest(Player player, PlayerInteractEntityEvent event) {
-        player.sendMessage(ChatColor.RED + "Keine Quest verfügbar!");
-        player.sendMessage(ChatColor.GRAY + "Alle Items existieren nicht in Oraxen.");
+        player.sendMessage(Component.text("Keine Quest verfügbar!", NamedTextColor.RED));
+        player.sendMessage(Component.text("Alle Items existieren nicht in Oraxen.", NamedTextColor.GRAY));
         event.setCancelled(true);
     }
 
@@ -133,7 +144,7 @@ public class NPCInteractListener implements Listener {
                 !OraxenItems.exists(quest.getRewardItem())) {
             plugin.getPluginLogger().severe("Quest-Items nicht in Oraxen: " +
                     quest.getRequiredItem() + " oder " + quest.getRewardItem());
-            player.sendMessage(ChatColor.RED + "Quest-Items fehlen!");
+            player.sendMessage(Component.text("Quest-Items fehlen!", NamedTextColor.RED));
             return;
         }
 
@@ -143,7 +154,7 @@ public class NPCInteractListener implements Listener {
 
         if (requiredItem == null || rewardItem == null) {
             plugin.getPluginLogger().severe("Konnte Items nicht erstellen");
-            player.sendMessage(ChatColor.RED + "Quest-Items konnten nicht erstellt werden!");
+            player.sendMessage(Component.text("Quest-Items konnten nicht erstellt werden!", NamedTextColor.RED));
             return;
         }
 
@@ -158,11 +169,10 @@ public class NPCInteractListener implements Listener {
 
         // Zeige Geld-Belohnung
         if (quest.getMoneyReward() > 0) {
-            player.sendMessage(ChatColor.GOLD + "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-            player.sendMessage(ChatColor.YELLOW + "Zusätzliche Belohnung:");
-            player.sendMessage(ChatColor.GOLD + "  +" +
-                    String.format("%.2f", quest.getMoneyReward()) + "$");
-            player.sendMessage(ChatColor.GOLD + "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            player.sendMessage(Component.text("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", NamedTextColor.GOLD));
+            player.sendMessage(Component.text("Zusätzliche Belohnung:", NamedTextColor.YELLOW));
+            player.sendMessage(Component.text("  +" + String.format("%.2f", quest.getMoneyReward()) + "$", NamedTextColor.GOLD));
+            player.sendMessage(Component.text("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", NamedTextColor.GOLD));
         }
 
         // GUI öffnet sich automatisch durch das Event

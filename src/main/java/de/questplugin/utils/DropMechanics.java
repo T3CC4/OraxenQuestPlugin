@@ -1,5 +1,8 @@
 package de.questplugin.utils;
 
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
+
 /**
  * Fortgeschrittene Drop-Mechanik für Block- und Mob-Drops
  *
@@ -12,6 +15,9 @@ package de.questplugin.utils;
  * 2) Soft Cap bei 95% - nie 100% garantiert
  * 3) Tier-basiert - verschiedene Formeln für verschiedene Seltenheiten
  * 4) Bonus-Rolls statt direkter Chance-Erhöhung
+ *
+ * PAPER OPTIMIZATION:
+ * - Adventure Components für Debug-Ausgaben
  */
 public class DropMechanics {
 
@@ -124,7 +130,7 @@ public class DropMechanics {
      *
      * @param baseChance Basis-Chance in %
      * @param enchantLevel Fortune/Looting Level
-     * @return Array [Anzahl Rolls, Chance pro Roll]
+     * @return BonusRollResult mit Anzahl Rolls und Chance
      */
     public static BonusRollResult calculateBonusRolls(double baseChance, int enchantLevel) {
         if (enchantLevel <= 0) {
@@ -305,10 +311,48 @@ public class DropMechanics {
         }
     }
 
-    // ==================== DEBUG HELPERS ====================
+    // ==================== DEBUG HELPERS (PAPER) ====================
 
     /**
      * Gibt detaillierte Info über Drop-Berechnung
+     *
+     * PAPER: Als Adventure Component
+     */
+    public static Component getDropInfoComponent(double baseChance, int enchantLevel) {
+        DropRarity rarity = DropRarity.fromChance(baseChance);
+
+        // Methode 1: Diminishing Returns
+        double method1 = calculateDropChance(baseChance, enchantLevel);
+
+        // Methode 2: Bonus Rolls
+        BonusRollResult method2 = calculateBonusRolls(baseChance, enchantLevel);
+
+        // Methode 3: Hybrid
+        HybridDropResult method3 = calculateHybridDrop(baseChance, enchantLevel);
+
+        return Component.text()
+                .append(Component.text("Base: ", NamedTextColor.GRAY))
+                .append(Component.text(String.format("%.2f%%", baseChance), NamedTextColor.WHITE))
+                .append(Component.text(" (" + rarity + ")", NamedTextColor.DARK_GRAY))
+                .appendNewline()
+
+                .append(Component.text("Method 1 (Diminishing): ", NamedTextColor.YELLOW))
+                .append(Component.text(String.format("%.2f%%", method1), NamedTextColor.GREEN))
+                .append(Component.text(" (+" + String.format("%.2f%%", method1 - baseChance) + ")", NamedTextColor.DARK_GRAY))
+                .appendNewline()
+
+                .append(Component.text("Method 2 (Bonus Rolls): ", NamedTextColor.YELLOW))
+                .append(Component.text(method2.toString(), NamedTextColor.GREEN))
+                .appendNewline()
+
+                .append(Component.text("Method 3 (Hybrid): ", NamedTextColor.YELLOW))
+                .append(Component.text(method3.toString(), NamedTextColor.GREEN))
+
+                .build();
+    }
+
+    /**
+     * Legacy String-Version für Logging
      */
     public static String getDropInfo(double baseChance, int enchantLevel) {
         DropRarity rarity = DropRarity.fromChance(baseChance);
@@ -335,6 +379,8 @@ public class DropMechanics {
 
     /**
      * Vergleicht alle drei Methoden
+     *
+     * PAPER: Console-Output für Debug
      */
     public static void printComparison(double baseChance) {
         System.out.println("=== DROP COMPARISON: " + baseChance + "% ===\n");

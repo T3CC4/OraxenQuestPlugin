@@ -1,7 +1,13 @@
 package de.questplugin.raid;
 
 import de.questplugin.OraxenQuestPlugin;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
+import org.bukkit.Bukkit;
+import org.bukkit.Sound;
 import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
 
 import java.util.*;
 
@@ -64,7 +70,7 @@ public class RewardConfig {
      * @param plugin Plugin-Instanz
      * @param difficultyMultiplier Schwierigkeitsmultiplikator (z.B. 1.4 für 2 Spieler)
      */
-    public void giveRewards(org.bukkit.entity.Player player, OraxenQuestPlugin plugin, double difficultyMultiplier) {
+    public void giveRewards(Player player, OraxenQuestPlugin plugin, double difficultyMultiplier) {
         giveRewards(player, plugin, difficultyMultiplier, 1);
     }
 
@@ -76,13 +82,13 @@ public class RewardConfig {
      * @param difficultyMultiplier Schwierigkeitsmultiplikator
      * @param playerCount Anzahl der Spieler im Raid
      */
-    public void giveRewards(org.bukkit.entity.Player player, OraxenQuestPlugin plugin, double difficultyMultiplier, int playerCount) {
+    public void giveRewards(Player player, OraxenQuestPlugin plugin, double difficultyMultiplier, int playerCount) {
         boolean rewardsGiven = false;
-        java.util.Random random = new java.util.Random();
+        Random random = new Random();
 
-        player.sendMessage(org.bukkit.ChatColor.GOLD + "━━━━ BELOHNUNGEN ━━━━");
-        player.sendMessage(org.bukkit.ChatColor.GRAY + "Schwierigkeit: " +
-                org.bukkit.ChatColor.YELLOW + String.format("%.1f", difficultyMultiplier) + "x");
+        player.sendMessage(Component.text("━━━━ BELOHNUNGEN ━━━━", NamedTextColor.GOLD));
+        player.sendMessage(Component.text("Schwierigkeit: ", NamedTextColor.GRAY)
+                .append(Component.text(String.format("%.1f", difficultyMultiplier) + "x", NamedTextColor.YELLOW)));
 
         // Oraxen Items - RANDOM verteilt
         if (!oraxenItems.isEmpty()) {
@@ -101,12 +107,16 @@ public class RewardConfig {
                                 io.th0rgal.oraxen.api.OraxenItems.getItemById(itemId);
 
                         if (builder != null) {
-                            org.bukkit.inventory.ItemStack item = builder.build();
+                            ItemStack item = builder.build();
 
                             // Menge bleibt Standard - Items sind schon wertvoll genug
                             player.getInventory().addItem(item);
-                            player.sendMessage(org.bukkit.ChatColor.GREEN +
-                                    "✓ " + item.getItemMeta().getDisplayName());
+
+                            Component itemName = item.getItemMeta() != null && item.getItemMeta().hasDisplayName()
+                                    ? item.getItemMeta().displayName()
+                                    : Component.text(itemId);
+
+                            player.sendMessage(Component.text("✓ ", NamedTextColor.GREEN).append(itemName));
                             itemsReceived++;
                             rewardsGiven = true;
                         } else {
@@ -119,7 +129,7 @@ public class RewardConfig {
             }
 
             if (itemsReceived == 0 && !oraxenItems.isEmpty()) {
-                player.sendMessage(org.bukkit.ChatColor.GRAY + "✗ Keine Items erhalten (Pech gehabt!)");
+                player.sendMessage(Component.text("✗ Keine Items erhalten (Pech gehabt!)", NamedTextColor.GRAY));
             }
         }
 
@@ -134,16 +144,15 @@ public class RewardConfig {
 
                     net.milkbowl.vault.economy.Economy economy = plugin.getEconomy();
                     economy.depositPlayer(player, playerMoney);
-                    player.sendMessage(org.bukkit.ChatColor.GOLD +
-                            "✓ Geld: +" + String.format("%.2f", playerMoney) + "$");
+                    player.sendMessage(Component.text("✓ Geld: +", NamedTextColor.GOLD)
+                            .append(Component.text(String.format("%.2f", playerMoney) + "$")));
                     rewardsGiven = true;
                 } catch (Exception e) {
                     plugin.getLogger().warning("Fehler beim Geben von Geld: " + e.getMessage());
                 }
             } else {
                 plugin.getLogger().warning("Vault Economy nicht verfügbar!");
-                player.sendMessage(org.bukkit.ChatColor.RED +
-                        "✗ Geld-Belohnung nicht verfügbar (Vault fehlt)");
+                player.sendMessage(Component.text("✗ Geld-Belohnung nicht verfügbar (Vault fehlt)", NamedTextColor.RED));
             }
         }
 
@@ -154,8 +163,8 @@ public class RewardConfig {
             int playerExp = Math.max(1, totalExp / playerCount);
 
             player.giveExp(playerExp);
-            player.sendMessage(org.bukkit.ChatColor.AQUA +
-                    "✓ Erfahrung: +" + playerExp + " XP");
+            player.sendMessage(Component.text("✓ Erfahrung: +", NamedTextColor.AQUA)
+                    .append(Component.text(playerExp + " XP")));
             rewardsGiven = true;
         }
 
@@ -168,10 +177,7 @@ public class RewardConfig {
                             .replace("%multiplier%", String.format("%.2f", difficultyMultiplier))
                             .replace("%playercount%", String.valueOf(playerCount));
 
-                    org.bukkit.Bukkit.dispatchCommand(
-                            org.bukkit.Bukkit.getConsoleSender(),
-                            processedCommand
-                    );
+                    Bukkit.dispatchCommand(Bukkit.getConsoleSender(), processedCommand);
                     plugin.getPluginLogger().debug("Command ausgeführt: " + processedCommand);
                     rewardsGiven = true;
                 } catch (Exception e) {
@@ -181,8 +187,8 @@ public class RewardConfig {
         }
 
         if (rewardsGiven) {
-            player.sendMessage(org.bukkit.ChatColor.GOLD + "━━━━━━━━━━━━━━━━━━");
-            player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 1.0f);
+            player.sendMessage(Component.text("━━━━━━━━━━━━━━━━━━", NamedTextColor.GOLD));
+            player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 1.0f);
         }
     }
 }

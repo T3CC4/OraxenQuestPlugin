@@ -3,6 +3,9 @@ package de.questplugin.listeners;
 import de.questplugin.OraxenQuestPlugin;
 import de.questplugin.managers.CraftingManager;
 import io.th0rgal.oraxen.api.OraxenItems;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
+import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -12,6 +15,10 @@ import org.bukkit.event.inventory.InventoryType;
 import org.bukkit.event.inventory.PrepareAnvilEvent;
 import org.bukkit.inventory.AnvilInventory;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.view.AnvilView;
+import org.bukkit.persistence.PersistentDataContainer;
+import org.bukkit.persistence.PersistentDataType;
+import org.bukkit.scheduler.BukkitScheduler;
 
 /**
  * Listener für Custom Anvil-Rezepte mit zwei Input-Slots
@@ -94,10 +101,9 @@ public class AnvilListener implements Listener {
         });
 
         // Setze Repair-Cost (XP-Anzeige im Anvil)
-        // NEU in 1.21: Nutze AnvilView statt AnvilInventory
-        if (event.getView() instanceof org.bukkit.inventory.view.AnvilView) {
-            org.bukkit.inventory.view.AnvilView anvilView =
-                    (org.bukkit.inventory.view.AnvilView) event.getView();
+        // Paper AnvilView API
+        if (event.getView() instanceof AnvilView) {
+            AnvilView anvilView = (AnvilView) event.getView();
             anvilView.setRepairCost(recipe.getExpCost());
 
             // WICHTIG: Setze Maximum höher als die Kosten
@@ -131,11 +137,11 @@ public class AnvilListener implements Listener {
 
         // Versuch 2: PersistentDataContainer (direkter Zugriff auf Oraxen-Metadaten)
         try {
-            org.bukkit.persistence.PersistentDataContainer pdc = item.getItemMeta().getPersistentDataContainer();
-            org.bukkit.NamespacedKey key = new org.bukkit.NamespacedKey("oraxen", "id");
+            PersistentDataContainer pdc = item.getItemMeta().getPersistentDataContainer();
+            NamespacedKey key = new NamespacedKey("oraxen", "id");
 
-            if (pdc.has(key, org.bukkit.persistence.PersistentDataType.STRING)) {
-                String pdcId = pdc.get(key, org.bukkit.persistence.PersistentDataType.STRING);
+            if (pdc.has(key, PersistentDataType.STRING)) {
+                String pdcId = pdc.get(key, PersistentDataType.STRING);
                 plugin.getPluginLogger().debug("  Oraxen-ID via PDC: " + pdcId);
                 return pdcId;
             }
@@ -214,8 +220,9 @@ public class AnvilListener implements Listener {
         if (requiredXP > 0 && totalXP < requiredXP) {
             plugin.getPluginLogger().debug("Nicht genug XP: " + totalXP + "/" + requiredXP);
             event.setCancelled(true);
-            player.sendMessage(org.bukkit.ChatColor.RED +
-                    "Nicht genug XP! Benötigt: " + requiredXP + " (Du hast: " + totalXP + ")");
+            player.sendMessage(Component.text("Nicht genug XP! Benötigt: ", NamedTextColor.RED)
+                    .append(Component.text(requiredXP))
+                    .append(Component.text(" (Du hast: " + totalXP + ")")));
             return;
         }
 
@@ -250,8 +257,8 @@ public class AnvilListener implements Listener {
         }
 
         // 3) Erfolgs-Nachricht
-        player.sendMessage(org.bukkit.ChatColor.GREEN + "✓ " +
-                recipe.getOutputItem() + " x" + recipe.getOutputAmount() + " hergestellt!");
+        player.sendMessage(Component.text("✓ ", NamedTextColor.GREEN)
+                .append(Component.text(recipe.getOutputItem() + " x" + recipe.getOutputAmount() + " hergestellt!")));
 
         plugin.getPluginLogger().debug("===================");
     }

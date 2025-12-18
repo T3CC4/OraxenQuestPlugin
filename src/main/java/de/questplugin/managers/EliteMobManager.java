@@ -16,13 +16,11 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.CreatureSpawnEvent;
-import org.bukkit.inventory.ItemStack;
 import org.bukkit.util.StructureSearchResult;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
-import java.util.stream.Collectors;
 
 /**
  * Verwaltet Elite-Mobs mit Equipment-Support
@@ -133,7 +131,7 @@ public class EliteMobManager extends BaseManager implements Listener {
         if (debugMode) {
             debug("=== Mob Spawn ===");
             debug("Typ: " + mobType);
-            debug("Biom: " + biome + " (" + BiomeHelper.getGermanName(biome) + ")");
+            debug("Biom: " + biome.getKey().getKey() + " (" + BiomeHelper.getGermanName(biome) + ")");
             debug("Location: " + location.getBlockX() + ", " + location.getBlockY() + ", " + location.getBlockZ());
         }
 
@@ -178,7 +176,7 @@ public class EliteMobManager extends BaseManager implements Listener {
                 spawnEliteMob(location, biomeConfig);
 
                 info("Biome-Elite gespawnt: " + biomeConfig.getEliteName() +
-                        " @ " + biome);
+                        " @ " + biome.getKey().getKey());
             }
         }
 
@@ -392,7 +390,7 @@ public class EliteMobManager extends BaseManager implements Listener {
     }
 
     private EliteMobConfig findBiomeElite(Biome biome, EntityType mobType) {
-        String biomeName = biome.name().toLowerCase();
+        String biomeName = biome.getKey().getKey().toLowerCase();
         String normalizedBiome = biomeName.replace("_", "");
 
         for (Map.Entry<String, EliteMobConfig> entry : biomeElites.entrySet()) {
@@ -429,26 +427,24 @@ public class EliteMobManager extends BaseManager implements Listener {
             return true;
         }
 
-        try {
-            Biome.valueOf(biomeStr.toUpperCase().replace(" ", "_"));
-            return true;
-        } catch (IllegalArgumentException e) {
-            // Nicht gefunden
-        }
-
-        return false;
+        // Paper Registry Check
+        String normalized = biomeStr.toLowerCase().replace(" ", "_");
+        NamespacedKey key = NamespacedKey.minecraft(normalized);
+        return Registry.BIOME.get(key) != null;
     }
 
     private List<Biome> getMatchingBiomes(String biomeStr) {
         if (biomeStr.equals("*")) {
-            return Arrays.asList(Biome.values());
+            List<Biome> all = new ArrayList<>();
+            Registry.BIOME.forEach(all::add);
+            return all;
         }
 
         List<Biome> matched = new ArrayList<>();
         String normalized = biomeStr.toLowerCase().replace("_", "");
 
-        for (Biome biome : Biome.values()) {
-            String biomeName = biome.name().toLowerCase().replace("_", "");
+        for (Biome biome : Registry.BIOME) {
+            String biomeName = biome.getKey().getKey().toLowerCase().replace("_", "");
             if (biomeName.contains(normalized) || normalized.contains(biomeName)) {
                 matched.add(biome);
             }
@@ -493,7 +489,7 @@ public class EliteMobManager extends BaseManager implements Listener {
 
     private boolean isNaturalSpawn(CreatureSpawnEvent.SpawnReason reason) {
         return reason == CreatureSpawnEvent.SpawnReason.NATURAL ||
-                reason == CreatureSpawnEvent.SpawnReason.CHUNK_GEN ||
+                reason == CreatureSpawnEvent.SpawnReason.DEFAULT ||
                 reason == CreatureSpawnEvent.SpawnReason.VILLAGE_INVASION ||
                 reason == CreatureSpawnEvent.SpawnReason.REINFORCEMENTS ||
                 reason == CreatureSpawnEvent.SpawnReason.NETHER_PORTAL ||

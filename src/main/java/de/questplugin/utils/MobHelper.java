@@ -1,7 +1,9 @@
 package de.questplugin.utils;
 
 import de.questplugin.enums.MobType;
-import org.bukkit.ChatColor;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.format.TextDecoration;
 import org.bukkit.entity.EntityType;
 
 import java.util.ArrayList;
@@ -11,6 +13,9 @@ import java.util.stream.Collectors;
 
 /**
  * Helper-Klasse für Mob-Operationen
+ *
+ * PAPER OPTIMIZATION:
+ * - Adventure Components statt ChatColor
  */
 public class MobHelper {
 
@@ -41,64 +46,85 @@ public class MobHelper {
 
     /**
      * Gibt formatierte Liste aller Mobs aus (für Hilfe-Commands)
+     *
+     * PAPER: Nutzt Adventure Components statt ChatColor
      */
-    public static String getFormattedMobList() {
-        StringBuilder sb = new StringBuilder();
+    public static Component getFormattedMobList() {
+        return Component.text()
+                // HOSTILE
+                .append(Component.text("=== HOSTILE ===", NamedTextColor.RED, TextDecoration.BOLD))
+                .appendNewline()
+                .append(buildCategoryComponent(MobType.MobCategory.HOSTILE, NamedTextColor.RED))
+                .appendNewline()
 
-        sb.append(ChatColor.RED + "=== HOSTILE ===" + ChatColor.RESET + "\n");
-        appendCategory(sb, MobType.MobCategory.HOSTILE, ChatColor.RED);
+                // ILLAGER
+                .append(Component.text("=== ILLAGER ===", NamedTextColor.DARK_RED, TextDecoration.BOLD))
+                .appendNewline()
+                .append(buildCategoryComponent(MobType.MobCategory.ILLAGER, NamedTextColor.DARK_RED))
+                .appendNewline()
 
-        sb.append("\n");
-        sb.append(ChatColor.DARK_RED + "=== ILLAGER ===" + ChatColor.RESET + "\n");
-        appendCategory(sb, MobType.MobCategory.ILLAGER, ChatColor.DARK_RED);
+                // NETHER
+                .append(Component.text("=== NETHER ===", NamedTextColor.DARK_PURPLE, TextDecoration.BOLD))
+                .appendNewline()
+                .append(buildCategoryComponent(MobType.MobCategory.NETHER, NamedTextColor.DARK_PURPLE))
+                .appendNewline()
 
-        sb.append("\n");
-        sb.append(ChatColor.DARK_PURPLE + "=== NETHER ===" + ChatColor.RESET + "\n");
-        appendCategory(sb, MobType.MobCategory.NETHER, ChatColor.DARK_PURPLE);
+                // END
+                .append(Component.text("=== END ===", NamedTextColor.LIGHT_PURPLE, TextDecoration.BOLD))
+                .appendNewline()
+                .append(buildCategoryComponent(MobType.MobCategory.END, NamedTextColor.LIGHT_PURPLE))
+                .appendNewline()
 
-        sb.append("\n");
-        sb.append(ChatColor.LIGHT_PURPLE + "=== END ===" + ChatColor.RESET + "\n");
-        appendCategory(sb, MobType.MobCategory.END, ChatColor.LIGHT_PURPLE);
+                // BOSS
+                .append(Component.text("=== BOSS ===", NamedTextColor.GOLD, TextDecoration.BOLD))
+                .appendNewline()
+                .append(buildCategoryComponent(MobType.MobCategory.BOSS, NamedTextColor.GOLD))
+                .appendNewline()
 
-        sb.append("\n");
-        sb.append(ChatColor.GOLD + "=== BOSS ===" + ChatColor.RESET + "\n");
-        appendCategory(sb, MobType.MobCategory.BOSS, ChatColor.GOLD);
+                // PASSIVE
+                .append(Component.text("=== PASSIVE ===", NamedTextColor.GREEN, TextDecoration.BOLD))
+                .appendNewline()
+                .append(buildCategoryComponent(MobType.MobCategory.PASSIVE, NamedTextColor.GREEN))
+                .appendNewline()
 
-        sb.append("\n");
-        sb.append(ChatColor.GREEN + "=== PASSIVE ===" + ChatColor.RESET + "\n");
-        appendCategory(sb, MobType.MobCategory.PASSIVE, ChatColor.GREEN);
+                // AQUATIC
+                .append(Component.text("=== AQUATIC ===", NamedTextColor.AQUA, TextDecoration.BOLD))
+                .appendNewline()
+                .append(buildCategoryComponent(MobType.MobCategory.AQUATIC, NamedTextColor.AQUA))
+                .appendNewline()
 
-        sb.append("\n");
-        sb.append(ChatColor.AQUA + "=== AQUATIC ===" + ChatColor.RESET + "\n");
-        appendCategory(sb, MobType.MobCategory.AQUATIC, ChatColor.AQUA);
+                // NEUTRAL
+                .append(Component.text("=== NEUTRAL ===", NamedTextColor.YELLOW, TextDecoration.BOLD))
+                .appendNewline()
+                .append(buildCategoryComponent(MobType.MobCategory.NEUTRAL, NamedTextColor.YELLOW))
+                .appendNewline()
 
-        sb.append("\n");
-        sb.append(ChatColor.YELLOW + "=== NEUTRAL ===" + ChatColor.RESET + "\n");
-        appendCategory(sb, MobType.MobCategory.NEUTRAL, ChatColor.YELLOW);
+                // TAMEABLE
+                .append(Component.text("=== TAMEABLE ===", NamedTextColor.BLUE, TextDecoration.BOLD))
+                .appendNewline()
+                .append(buildCategoryComponent(MobType.MobCategory.TAMEABLE, NamedTextColor.BLUE))
 
-        sb.append("\n");
-        sb.append(ChatColor.BLUE + "=== TAMEABLE ===" + ChatColor.RESET + "\n");
-        appendCategory(sb, MobType.MobCategory.TAMEABLE, ChatColor.BLUE);
-
-        return sb.toString();
+                .build();
     }
 
     /**
-     * Fügt Kategorie zur formatierten Liste hinzu
+     * Baut Component für eine Mob-Kategorie
      */
-    private static void appendCategory(StringBuilder sb, MobType.MobCategory category, ChatColor color) {
+    private static Component buildCategoryComponent(MobType.MobCategory category, NamedTextColor color) {
         MobType[] mobs = MobType.getByCategory(category);
-        if (mobs.length == 0) return;
-
-        sb.append(color).append(category.getDisplayName()).append(": ")
-                .append(ChatColor.WHITE);
+        if (mobs.length == 0) {
+            return Component.empty();
+        }
 
         String mobList = Arrays.stream(mobs)
                 .map(m -> m.getEntityType().name().toLowerCase())
                 .distinct()
                 .collect(Collectors.joining(", "));
 
-        sb.append(mobList).append("\n");
+        return Component.text()
+                .append(Component.text(category.getDisplayName() + ": ", color))
+                .append(Component.text(mobList, NamedTextColor.WHITE))
+                .build();
     }
 
     /**
@@ -117,10 +143,15 @@ public class MobHelper {
 
     /**
      * Gibt Kurzinfo über einen Mob
+     *
+     * PAPER: Als Adventure Component
      */
-    public static String getMobInfo(MobType mobType) {
-        return ChatColor.YELLOW + mobType.getDisplayName() +
-                ChatColor.GRAY + " (" + mobType.getCategory().getDisplayName() + ")";
+    public static Component getMobInfo(MobType mobType) {
+        return Component.text()
+                .append(Component.text(mobType.getDisplayName(), NamedTextColor.YELLOW))
+                .appendSpace()
+                .append(Component.text("(" + mobType.getCategory().getDisplayName() + ")", NamedTextColor.GRAY))
+                .build();
     }
 
     /**

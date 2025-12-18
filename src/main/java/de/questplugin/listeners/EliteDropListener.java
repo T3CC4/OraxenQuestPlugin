@@ -1,13 +1,16 @@
 package de.questplugin.listeners;
 
 import de.questplugin.OraxenQuestPlugin;
-import de.questplugin.managers.BaseManager;
 import de.questplugin.mobs.api.CustomMob;
 import de.questplugin.utils.AEAPIHelper;
 import de.questplugin.utils.DropMechanics;
 import io.th0rgal.oraxen.api.OraxenItems;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
+import org.bukkit.Particle;
 import org.bukkit.Sound;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
@@ -195,9 +198,9 @@ public class EliteDropListener implements Listener {
             playEliteDropEffects(dropLocation, generatedDrops.size());
 
             if (killer != null) {
-                killer.sendMessage(ChatColor.GOLD + "✦ " + ChatColor.YELLOW +
-                        "Elite-Loot: " + ChatColor.WHITE + generatedDrops.size() +
-                        " Items!");
+                killer.sendMessage(Component.text("✦ ", NamedTextColor.GOLD)
+                        .append(Component.text("Elite-Loot: ", NamedTextColor.YELLOW))
+                        .append(Component.text(generatedDrops.size() + " Items!", NamedTextColor.WHITE)));
             }
         }
 
@@ -297,9 +300,9 @@ public class EliteDropListener implements Listener {
      */
     private void playEliteDropEffects(Location location, int dropCount) {
         // Partikel
-        org.bukkit.Particle particle = org.bukkit.Particle.FIREWORK;
+        Particle particle = Particle.FIREWORK;
         if (dropCount >= 3) {
-            particle = org.bukkit.Particle.TOTEM_OF_UNDYING;
+            particle = Particle.TOTEM_OF_UNDYING;
         }
 
         location.getWorld().spawnParticle(

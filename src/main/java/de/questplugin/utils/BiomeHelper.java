@@ -1,7 +1,10 @@
 package de.questplugin.utils;
 
 import de.questplugin.enums.BiomeType;
-import org.bukkit.ChatColor;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.format.TextColor;
+import org.bukkit.Registry;
 import org.bukkit.block.Biome;
 
 import java.util.ArrayList;
@@ -56,51 +59,107 @@ public class BiomeHelper {
     }
 
     /**
-     * Gibt formatierte Liste aller Biome aus (für Hilfe-Commands)
+     * Gibt formatierte Liste aller Biome aus (für Hilfe-Commands) - Paper Adventure API
      */
+    public static Component getFormattedBiomeListComponent() {
+        Component component = Component.empty();
+
+        // Overworld
+        component = component.append(Component.text("=== OVERWORLD ===", NamedTextColor.GREEN)).append(Component.newline());
+        component = appendCategoryComponent(component, BiomeType.BiomeCategory.PLAINS, NamedTextColor.YELLOW);
+        component = appendCategoryComponent(component, BiomeType.BiomeCategory.FOREST, NamedTextColor.DARK_GREEN);
+        component = appendCategoryComponent(component, BiomeType.BiomeCategory.TAIGA, NamedTextColor.AQUA);
+        component = appendCategoryComponent(component, BiomeType.BiomeCategory.JUNGLE, NamedTextColor.GREEN);
+        component = appendCategoryComponent(component, BiomeType.BiomeCategory.DESERT, NamedTextColor.GOLD);
+        component = appendCategoryComponent(component, BiomeType.BiomeCategory.OCEAN, NamedTextColor.BLUE);
+        component = appendCategoryComponent(component, BiomeType.BiomeCategory.MOUNTAIN, NamedTextColor.GRAY);
+
+        component = component.append(Component.newline());
+
+        // Underground
+        component = component.append(Component.text("=== UNDERGROUND ===", NamedTextColor.DARK_GRAY)).append(Component.newline());
+        component = appendCategoryComponent(component, BiomeType.BiomeCategory.UNDERGROUND, NamedTextColor.DARK_PURPLE);
+
+        component = component.append(Component.newline());
+
+        // Nether
+        component = component.append(Component.text("=== NETHER ===", NamedTextColor.RED)).append(Component.newline());
+        component = appendCategoryComponent(component, BiomeType.BiomeCategory.NETHER, NamedTextColor.DARK_RED);
+
+        component = component.append(Component.newline());
+
+        // End
+        component = component.append(Component.text("=== END ===", TextColor.color(0xFFAAFF))).append(Component.newline());
+        component = appendCategoryComponent(component, BiomeType.BiomeCategory.END, NamedTextColor.DARK_PURPLE);
+
+        return component;
+    }
+
+    /**
+     * Legacy-Methode für ChatColor (Rückwärtskompatibilität)
+     */
+    @Deprecated
     public static String getFormattedBiomeList() {
         StringBuilder sb = new StringBuilder();
 
         // Overworld
-        sb.append(ChatColor.GREEN + "=== OVERWORLD ===" + ChatColor.RESET + "\n");
-        appendCategory(sb, BiomeType.BiomeCategory.PLAINS, ChatColor.YELLOW);
-        appendCategory(sb, BiomeType.BiomeCategory.FOREST, ChatColor.DARK_GREEN);
-        appendCategory(sb, BiomeType.BiomeCategory.TAIGA, ChatColor.AQUA);
-        appendCategory(sb, BiomeType.BiomeCategory.JUNGLE, ChatColor.GREEN);
-        appendCategory(sb, BiomeType.BiomeCategory.DESERT, ChatColor.GOLD);
-        appendCategory(sb, BiomeType.BiomeCategory.OCEAN, ChatColor.BLUE);
-        appendCategory(sb, BiomeType.BiomeCategory.MOUNTAIN, ChatColor.GRAY);
+        sb.append("§a=== OVERWORLD ===§r\n");
+        appendCategory(sb, BiomeType.BiomeCategory.PLAINS, "§e");
+        appendCategory(sb, BiomeType.BiomeCategory.FOREST, "§2");
+        appendCategory(sb, BiomeType.BiomeCategory.TAIGA, "§b");
+        appendCategory(sb, BiomeType.BiomeCategory.JUNGLE, "§a");
+        appendCategory(sb, BiomeType.BiomeCategory.DESERT, "§6");
+        appendCategory(sb, BiomeType.BiomeCategory.OCEAN, "§9");
+        appendCategory(sb, BiomeType.BiomeCategory.MOUNTAIN, "§7");
 
         sb.append("\n");
 
         // Underground
-        sb.append(ChatColor.DARK_GRAY + "=== UNDERGROUND ===" + ChatColor.RESET + "\n");
-        appendCategory(sb, BiomeType.BiomeCategory.UNDERGROUND, ChatColor.DARK_PURPLE);
+        sb.append("§8=== UNDERGROUND ===§r\n");
+        appendCategory(sb, BiomeType.BiomeCategory.UNDERGROUND, "§5");
 
         sb.append("\n");
 
         // Nether
-        sb.append(ChatColor.RED + "=== NETHER ===" + ChatColor.RESET + "\n");
-        appendCategory(sb, BiomeType.BiomeCategory.NETHER, ChatColor.DARK_RED);
+        sb.append("§c=== NETHER ===§r\n");
+        appendCategory(sb, BiomeType.BiomeCategory.NETHER, "§4");
 
         sb.append("\n");
 
         // End
-        sb.append(ChatColor.LIGHT_PURPLE + "=== END ===" + ChatColor.RESET + "\n");
-        appendCategory(sb, BiomeType.BiomeCategory.END, ChatColor.DARK_PURPLE);
+        sb.append("§d=== END ===§r\n");
+        appendCategory(sb, BiomeType.BiomeCategory.END, "§5");
 
         return sb.toString();
     }
 
     /**
-     * Fügt Kategorie zur formatierten Liste hinzu
+     * Fügt Kategorie zur Component hinzu
      */
-    private static void appendCategory(StringBuilder sb, BiomeType.BiomeCategory category, ChatColor color) {
+    private static Component appendCategoryComponent(Component component, BiomeType.BiomeCategory category, TextColor color) {
+        BiomeType[] biomes = BiomeType.getByCategory(category);
+        if (biomes.length == 0) return component;
+
+        String biomeList = Arrays.stream(biomes)
+                .map(b -> b.name().toLowerCase())
+                .collect(Collectors.joining(", "));
+
+        return component
+                .append(Component.text(category.getDisplayName() + ": ", color))
+                .append(Component.text(biomeList, NamedTextColor.WHITE))
+                .append(Component.newline());
+    }
+
+    /**
+     * Legacy-Methode für StringBuilder
+     */
+    @Deprecated
+    private static void appendCategory(StringBuilder sb, BiomeType.BiomeCategory category, String colorCode) {
         BiomeType[] biomes = BiomeType.getByCategory(category);
         if (biomes.length == 0) return;
 
-        sb.append(color).append(category.getDisplayName()).append(": ")
-                .append(ChatColor.WHITE);
+        sb.append(colorCode).append(category.getDisplayName()).append(": ")
+                .append("§f");
 
         String biomeList = Arrays.stream(biomes)
                 .map(b -> b.name().toLowerCase())
@@ -142,12 +201,22 @@ public class BiomeHelper {
     }
 
     /**
-     * Gibt Kurzinfo über ein Biome
+     * Gibt Kurzinfo über ein Biome als Component
      */
+    public static Component getBiomeInfoComponent(BiomeType biomeType) {
+        return Component.text(biomeType.getDisplayName(), NamedTextColor.YELLOW)
+                .append(Component.text(" (" + biomeType.getCategory().getDisplayName() + ")", NamedTextColor.GRAY))
+                .append(Component.text(" - " + biomeType.getCategory().getDimension().getDisplayName(), NamedTextColor.DARK_GRAY));
+    }
+
+    /**
+     * Legacy-Methode für String
+     */
+    @Deprecated
     public static String getBiomeInfo(BiomeType biomeType) {
-        return ChatColor.YELLOW + biomeType.getDisplayName() +
-                ChatColor.GRAY + " (" + biomeType.getCategory().getDisplayName() + ")" +
-                ChatColor.DARK_GRAY + " - " + biomeType.getCategory().getDimension().getDisplayName();
+        return "§e" + biomeType.getDisplayName() +
+                "§7 (" + biomeType.getCategory().getDisplayName() + ")" +
+                "§8 - " + biomeType.getCategory().getDimension().getDisplayName();
     }
 
     /**
@@ -180,7 +249,16 @@ public class BiomeHelper {
      */
     public static String getGermanName(Biome biome) {
         BiomeType type = BiomeType.fromBukkitBiome(biome);
-        return type != null ? type.getDisplayName() : biome.name();
+        return type != null ? type.getDisplayName() : biome.getKey().getKey();
+    }
+
+    /**
+     * Gibt alle registrierten Biome aus Paper Registry zurück
+     */
+    public static List<Biome> getAllRegisteredBiomes() {
+        List<Biome> biomes = new ArrayList<>();
+        Registry.BIOME.forEach(biomes::add);
+        return biomes;
     }
 
     /**

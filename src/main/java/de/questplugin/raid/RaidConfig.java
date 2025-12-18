@@ -2,6 +2,7 @@ package de.questplugin.raid;
 
 import de.questplugin.OraxenQuestPlugin;
 import de.questplugin.utils.BiomeHelper;
+import org.bukkit.Registry;
 import org.bukkit.block.Biome;
 import org.bukkit.configuration.ConfigurationSection;
 
@@ -48,19 +49,22 @@ public class RaidConfig {
             Set<Biome> allowedBiomes = new HashSet<>();
 
             if (biomeStrings.isEmpty() || biomeStrings.contains("*")) {
-                // Alle Biome erlauben
-                allowedBiomes.addAll(Arrays.asList(Biome.values()));
+                // Alle Biome erlauben - Paper Registry nutzen
+                Registry.BIOME.forEach(allowedBiomes::add);
                 plugin.getPluginLogger().debug("Raid '" + id + "': Alle Biome erlaubt");
             } else {
                 for (String biomeStr : biomeStrings) {
-                    // Normalisiere zu UPPER_CASE für Bukkit
-                    String normalized = biomeStr.toUpperCase().replace(" ", "_");
+                    // Normalisiere zu minecraft:biome_name Format
+                    String normalized = biomeStr.toLowerCase().replace(" ", "_");
 
-                    try {
-                        Biome biome = Biome.valueOf(normalized);
+                    // Versuche zuerst mit minecraft: Namespace
+                    org.bukkit.NamespacedKey key = org.bukkit.NamespacedKey.minecraft(normalized);
+                    Biome biome = Registry.BIOME.get(key);
+
+                    if (biome != null) {
                         allowedBiomes.add(biome);
-                        plugin.getPluginLogger().debug("Raid '" + id + "': Biom hinzugefügt: " + biome);
-                    } catch (IllegalArgumentException e) {
+                        plugin.getPluginLogger().debug("Raid '" + id + "': Biom hinzugefügt: " + biome.getKey().getKey());
+                    } else {
                         plugin.getLogger().warning("Raid '" + id + "': Ungültiges Biom '" + biomeStr +
                                 "' (versucht: " + normalized + ")");
                         plugin.getLogger().warning("  Nutze /quest biomes für gültige Biom-Namen");
@@ -161,7 +165,13 @@ public class RaidConfig {
      * Gibt deutschen Biom-Namen zurück
      */
     public String getBiomeDisplayNames() {
-        if (allowedBiomes.size() >= Biome.values().length - 5) {
+        // Zähle alle registrierten Biome via Paper Registry
+        int totalBiomes = 0;
+        for (Biome ignored : Registry.BIOME) {
+            totalBiomes++;
+        }
+
+        if (allowedBiomes.size() >= totalBiomes - 5) {
             return "Alle";
         }
 
